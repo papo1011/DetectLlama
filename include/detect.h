@@ -1,5 +1,5 @@
 #pragma once
-#include "./utils.h"
+#include "./llama_state.h"
 #include "llama.h"
 
 #include <vector>

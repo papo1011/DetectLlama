@@ -1,6 +1,9 @@
+#include "../include/console.h"
 #include "../include/detect.h"
 #include "../include/io.h"
-#include "../include/utils.h"
+#include "../include/llama_logging.h"
+#include "../include/llama_state.h"
+#include "../include/signals.h"
 
 #include <argparse/argparse.hpp>
 #include <csignal>

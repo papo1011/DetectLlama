@@ -81,12 +81,18 @@ else()
 endif()
 
 add_executable(DetectLlama src/main.cpp
+        src/console.cpp
         src/detect.cpp
-        src/utils.cpp
         src/io.cpp
+        src/llama_logging.cpp
+        src/llama_state.cpp
+        src/signals.cpp
+        include/console.h
         include/detect.h
-        include/utils.h
         include/io.h
+        include/llama_logging.h
+        include/llama_state.h
+        include/signals.h
 )
 
 target_link_libraries(DetectLlama PRIVATE llama argparse::argparse)
