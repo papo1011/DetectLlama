@@ -46,15 +46,47 @@ distinguishing between human and AI written text with high accuracy and minimal 
 
 ### Before building
 
-This step is **required!!**
+Required:
 
-- [install llama.cpp](https://github.com/ggml-org/llama.cpp/blob/master/docs/install.md)
+- CMake 3.15+
+- a C++20 compiler (`g++`, `clang++`, or MSVC)
+- Git, used by CMake to fetch dependencies when needed
+
+Recommended:
+
+- `ccache`, to speed up repeated rebuilds
+
+Optional GPU backends:
+
+- NVIDIA CUDA: install the CUDA Toolkit and make sure `nvcc` is available in `PATH`
+- Apple Metal: available through the standard Apple toolchain on macOS
+- Vulkan: install the Vulkan SDK/development files
+
+If [llama.cpp](https://github.com/ggml-org/llama.cpp/blob/master/docs/install.md) is installed as a CMake package,
+the build will use it. Otherwise, CMake downloads llama.cpp into `build/_deps` automatically.
+The first bundled CUDA build can take a while because `nvcc` must compile the ggml CUDA kernels.
 
 ### How to build
 
 ```bash
 cmake -B build .
 cmake --build ./build --target fast-detect-gpt -j 6
+```
+
+For a timed build with clearer feedback while bundled llama.cpp is being configured and built:
+
+```bash
+./scripts/build.sh
+./scripts/build.sh --gpu cuda --jobs 8
+```
+
+The bundled llama.cpp fallback uses `FAST_DETECT_GPU=auto` by default. You can override it:
+
+```bash
+cmake -B build . -DFAST_DETECT_GPU=cpu
+cmake -B build . -DFAST_DETECT_GPU=cuda
+cmake -B build . -DFAST_DETECT_GPU=metal
+cmake -B build . -DFAST_DETECT_GPU=vulkan
 ```
 
 ### How to use
