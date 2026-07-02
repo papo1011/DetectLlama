@@ -1,0 +1,91 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+BUILD_DIR="${BUILD_DIR:-$ROOT_DIR/build}"
+INPUT_DIR="$ROOT_DIR/inputs"
+EXE_NAME="DetectLlama"
+
+USE_GPU="${USE_GPU:-auto}"
+N_CTX="${N_CTX:-2048}"
+N_BATCH="${N_BATCH:-2048}"
+DETECT_LLAMA_DRY_RUN="${DETECT_LLAMA_DRY_RUN:-0}"
+
+usage() {
+    cat <<EOF
+Usage: $0 <input-file-or-name-inside-inputs/>
+
+Model selection is automatic. If the selected GGUF is not already cached,
+scripts/download-model.sh installs it with llama-cli -hf.
+EOF
+}
+
+to_lower() {
+    printf "%s" "$1" | tr '[:upper:]' '[:lower:]'
+}
+
+detect_accelerator() {
+    local os_name
+    local arch_name
+
+    os_name="$(uname -s)"
+    arch_name="$(uname -m)"
+
+    if [ "$os_name" = "Darwin" ] && [ "$arch_name" = "arm64" ]; then
+        echo "apple-unified"
+    elif command -v nvidia-smi >/dev/null 2>&1 &&
+        nvidia-smi --query-gpu=memory.free --format=csv,noheader,nounits 2>/dev/null |
+            awk '$1 + 0 >= 6000 { found=1 } END { exit found ? 0 : 1 }'; then
+        echo "nvidia"
+    else
+        echo "cpu"
+    fi
+}
+
+if [ "$#" -ne 1 ]; then
+    usage >&2
+    exit 1
+fi
+
+INPUT_ARG="$1"
+if [ -f "$INPUT_ARG" ]; then
+    INPUT_PATH="$INPUT_ARG"
+else
+    INPUT_PATH="$INPUT_DIR/$INPUT_ARG"
+fi
+
+if [ ! -f "$INPUT_PATH" ]; then
+    echo "Input file not found: $INPUT_PATH" >&2
+    exit 1
+fi
+
+EXECUTABLE="$BUILD_DIR/$EXE_NAME"
+if [ ! -x "$EXECUTABLE" ] && [ "$DETECT_LLAMA_DRY_RUN" != "1" ]; then
+    echo "Executable not found: $EXECUTABLE. Build first with ./scripts/build.sh" >&2
+    exit 1
+fi
+
+if [ "$DETECT_LLAMA_DRY_RUN" = "1" ]; then
+    "$ROOT_DIR/scripts/download-model.sh" --dry-run
+    MODEL_PATH="<auto-selected-llama.cpp-cache-gguf>"
+else
+    MODEL_PATH="$("$ROOT_DIR/scripts/download-model.sh" --print-path)"
+fi
+
+GPU_ARGS=()
+USE_GPU_LC="$(to_lower "$USE_GPU")"
+ACCELERATOR="$(detect_accelerator)"
+if [ "$USE_GPU_LC" = "1" ] || [ "$USE_GPU_LC" = "true" ] || { [ "$USE_GPU_LC" = "auto" ] && [ "$ACCELERATOR" != "cpu" ]; }; then
+    GPU_ARGS=(--gpu)
+fi
+
+CMD=("$EXECUTABLE" -m "$MODEL_PATH" -f "$INPUT_PATH" -c "$N_CTX" -b "$N_BATCH" "${GPU_ARGS[@]}")
+
+if [ "$DETECT_LLAMA_DRY_RUN" = "1" ]; then
+    printf "Dry run command:"
+    printf " %q" "${CMD[@]}"
+    printf "\n"
+    exit 0
+fi
+
+"${CMD[@]}"

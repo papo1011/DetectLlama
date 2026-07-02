@@ -83,18 +83,37 @@ cmake -B build . -DDETECT_LLAMA_GPU=vulkan
 
 ### How to use
 
-- create a .env file (you can use .env.sample as a template)
-- Optional, if you don't have a model yet:
-    - get your huggingface token and set it in the .env file (https://huggingface.co/docs/hub/en/security-tokens)
-    - select the model huggingface url path in the .env file (default is for falcon-7b-instruct, suggested in the paper)
-- If you have a model already downloaded, move it to the models/ folder or symlink it there, then set MODEL_NAME in the
-  .env
-  file to the folder name of the model
-- move your raw text input file to the inputs/ folder and set INPUT_FILE in the .env file to the file name
-- run:
-- ```bash
-  bash ./run.sh
-  ```
+- Run DetectLlama with an input file path:
+
+```bash
+bash ./scripts/run.sh inputs/your-input-file.txt
+```
+
+- DetectLlama profiles the local machine before downloading Falcon 7B:
+    - available disk space in `models/`
+    - total and available system RAM
+    - NVIDIA VRAM when `nvidia-smi` is available
+    - Apple Silicon unified memory on macOS
+    - CPU core count and OS/architecture
+- The auto selector targets about `TARGET_TOKENS_PER_SEC=30` with a conservative memory budget. It chooses the highest
+  practical Falcon 7B GGUF quantization that should stay near that target on the detected accelerator, then installs it
+  through `llama-cli -hf` into the standard llama.cpp/Hugging Face cache. If only CPU is usable, it falls back to the
+  smallest viable quant and warns that 30 tokens/sec is unlikely.
+- Optional: export `HF_TOKEN` if you switch to a private or gated Hugging Face model.
+
+To inspect the hardware decision without running inference:
+
+```bash
+DETECT_LLAMA_DRY_RUN=1 bash ./scripts/run.sh inputs/your-input-file.txt
+```
+
+To only install the selected GGUF into the llama.cpp/Hugging Face cache:
+
+```bash
+./scripts/download-model.sh
+./scripts/download-model.sh --dry-run
+./scripts/download-model.sh --print-path
+```
 
 ### Understanding the output
 The output will be a discrepancy score for each input text, the higher the score the more likely it is that the text is human written.
