@@ -39,5 +39,6 @@ Testing/
 # --- Project specific ---
 models/
 inputs/
+example/
 .env
 *.parquet
