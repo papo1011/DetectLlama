@@ -86,7 +86,7 @@ cmake -B build . -DDETECT_LLAMA_GPU=vulkan
 - Run DetectLlama with an input file path:
 
 ```bash
-bash ./scripts/run.sh inputs/your-input-file.txt
+bash ./scripts/run.sh /path/to/your-input-file.txt
 ```
 
 - DetectLlama profiles the local machine before downloading Falcon 7B:
@@ -104,7 +104,7 @@ bash ./scripts/run.sh inputs/your-input-file.txt
 To inspect the hardware decision without running inference:
 
 ```bash
-DETECT_LLAMA_DRY_RUN=1 bash ./scripts/run.sh inputs/your-input-file.txt
+DETECT_LLAMA_DRY_RUN=1 bash ./scripts/run.sh /path/to/your-input-file.txt
 ```
 
 To only install the selected GGUF into the llama.cpp/Hugging Face cache:

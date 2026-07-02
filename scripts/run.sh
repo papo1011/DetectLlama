@@ -3,7 +3,6 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BUILD_DIR="${BUILD_DIR:-$ROOT_DIR/build}"
-INPUT_DIR="$ROOT_DIR/inputs"
 EXE_NAME="DetectLlama"
 
 USE_GPU="${USE_GPU:-auto}"
@@ -13,7 +12,7 @@ DETECT_LLAMA_DRY_RUN="${DETECT_LLAMA_DRY_RUN:-0}"
 
 usage() {
     cat <<EOF
-Usage: $0 <input-file-or-name-inside-inputs/>
+Usage: $0 <input-file-path>
 
 Model selection is automatic. If the selected GGUF is not already cached,
 scripts/download-model.sh installs it with llama-cli -hf.
@@ -47,12 +46,7 @@ if [ "$#" -ne 1 ]; then
     exit 1
 fi
 
-INPUT_ARG="$1"
-if [ -f "$INPUT_ARG" ]; then
-    INPUT_PATH="$INPUT_ARG"
-else
-    INPUT_PATH="$INPUT_DIR/$INPUT_ARG"
-fi
+INPUT_PATH="$1"
 
 if [ ! -f "$INPUT_PATH" ]; then
     echo "Input file not found: $INPUT_PATH" >&2
