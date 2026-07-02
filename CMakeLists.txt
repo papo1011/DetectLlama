@@ -30,8 +30,6 @@ add_executable(fast-detect-gpt src/main.cpp
         include/detect.h
         include/utils.h
         include/io.h
-        include/threshold.h
-        src/threshold.cpp
 )
 
 target_link_libraries(fast-detect-gpt PRIVATE llama argparse::argparse Arrow::arrow_shared Parquet::parquet_shared)
