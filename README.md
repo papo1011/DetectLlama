@@ -1,14 +1,6 @@
-```bash
-██████ ████  █████ ██████    █████  █████ ██████ █████ ████ ██████    █████   ██████ ██████
-██    ██  ██ ██      ██      ██  ██ ██      ██   ██   ██      ██     ██       ██  ██   ██
-████  ██████ █████   ██      ██  ██ ████    ██   ████ ██      ██     ██   ███ ██████   ██
-██    ██  ██    ██   ██      ██  ██ ██      ██   ██   ██      ██     ██    ██ ██       ██
-██    ██  ██ █████   ██      █████  █████   ██   █████ ████   ██      █████   ██       ██
-```
+# What is DetectLlama?
 
-# What is fast-detect-gpt.cpp?
-
-It is a lightweight CLI app that uses llama.cpp to enable detection of AI generated text.
+DetectLlama is a lightweight CLI app that uses llama.cpp to enable detection of AI generated text.
 If you want to dig into the details of how it works, read the fast detect gpt paper
 [![arXiv](https://img.shields.io/badge/arXiv-2310.05130-b31b1b.svg)](https://arxiv.org/abs/2310.05130)
 
@@ -70,7 +62,7 @@ The first bundled CUDA build can take a while because `nvcc` must compile the gg
 
 ```bash
 cmake -B build .
-cmake --build ./build --target fast-detect-gpt -j 6
+cmake --build ./build --target DetectLlama -j 6
 ```
 
 For a timed build with clearer feedback while bundled llama.cpp is being configured and built:
@@ -80,13 +72,13 @@ For a timed build with clearer feedback while bundled llama.cpp is being configu
 ./scripts/build.sh --gpu cuda --jobs 8
 ```
 
-The bundled llama.cpp fallback uses `FAST_DETECT_GPU=auto` by default. You can override it:
+The bundled llama.cpp fallback uses `DETECT_LLAMA_GPU=auto` by default. You can override it:
 
 ```bash
-cmake -B build . -DFAST_DETECT_GPU=cpu
-cmake -B build . -DFAST_DETECT_GPU=cuda
-cmake -B build . -DFAST_DETECT_GPU=metal
-cmake -B build . -DFAST_DETECT_GPU=vulkan
+cmake -B build . -DDETECT_LLAMA_GPU=cpu
+cmake -B build . -DDETECT_LLAMA_GPU=cuda
+cmake -B build . -DDETECT_LLAMA_GPU=metal
+cmake -B build . -DDETECT_LLAMA_GPU=vulkan
 ```
 
 ### How to use

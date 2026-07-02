@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.15)
-project(fast-detect-gpt)
+project(DetectLlama)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -8,8 +8,8 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 include(FetchContent)
 
-set(FAST_DETECT_GPU "auto" CACHE STRING "GPU backend for bundled llama.cpp: auto, cpu, cuda, metal, vulkan")
-set_property(CACHE FAST_DETECT_GPU PROPERTY STRINGS auto cpu cuda metal vulkan)
+set(DETECT_LLAMA_GPU "auto" CACHE STRING "GPU backend for bundled llama.cpp: auto, cpu, cuda, metal, vulkan")
+set_property(CACHE DETECT_LLAMA_GPU PROPERTY STRINGS auto cpu cuda metal vulkan)
 
 # ------ argparse ------
 FetchContent_Declare(
@@ -38,27 +38,27 @@ else()
         set(LLAMA_USE_PREBUILT_UI OFF CACHE BOOL "" FORCE)
         set(LLAMA_OPENSSL OFF CACHE BOOL "" FORCE)
 
-        if (FAST_DETECT_GPU STREQUAL "cpu")
+        if (DETECT_LLAMA_GPU STREQUAL "cpu")
                 set(GGML_CUDA OFF CACHE BOOL "" FORCE)
                 set(GGML_METAL OFF CACHE BOOL "" FORCE)
                 set(GGML_VULKAN OFF CACHE BOOL "" FORCE)
                 message(STATUS "Bundled llama.cpp GPU backend: CPU only")
-        elseif (FAST_DETECT_GPU STREQUAL "cuda")
+        elseif (DETECT_LLAMA_GPU STREQUAL "cuda")
                 set(GGML_CUDA ON CACHE BOOL "" FORCE)
                 message(STATUS "Bundled llama.cpp GPU backend: CUDA")
-        elseif (FAST_DETECT_GPU STREQUAL "metal")
+        elseif (DETECT_LLAMA_GPU STREQUAL "metal")
                 set(GGML_METAL ON CACHE BOOL "" FORCE)
                 message(STATUS "Bundled llama.cpp GPU backend: Metal")
-        elseif (FAST_DETECT_GPU STREQUAL "vulkan")
+        elseif (DETECT_LLAMA_GPU STREQUAL "vulkan")
                 set(GGML_VULKAN ON CACHE BOOL "" FORCE)
                 message(STATUS "Bundled llama.cpp GPU backend: Vulkan")
-        elseif (FAST_DETECT_GPU STREQUAL "auto")
+        elseif (DETECT_LLAMA_GPU STREQUAL "auto")
                 if (APPLE)
                         set(GGML_METAL ON CACHE BOOL "" FORCE)
                         message(STATUS "Bundled llama.cpp GPU backend: Metal auto-detected")
                 else()
-                        find_program(FAST_DETECT_NVCC nvcc)
-                        if (FAST_DETECT_NVCC)
+                        find_program(DETECT_LLAMA_NVCC nvcc)
+                        if (DETECT_LLAMA_NVCC)
                                 set(GGML_CUDA ON CACHE BOOL "" FORCE)
                                 message(STATUS "Bundled llama.cpp GPU backend: CUDA auto-detected")
                         else()
@@ -66,7 +66,7 @@ else()
                         endif()
                 endif()
         else()
-                message(FATAL_ERROR "Unsupported FAST_DETECT_GPU='${FAST_DETECT_GPU}'. Use auto, cpu, cuda, metal, or vulkan.")
+                message(FATAL_ERROR "Unsupported DETECT_LLAMA_GPU='${DETECT_LLAMA_GPU}'. Use auto, cpu, cuda, metal, or vulkan.")
         endif()
 
         FetchContent_Declare(
@@ -80,7 +80,7 @@ else()
         FetchContent_MakeAvailable(llama_cpp)
 endif()
 
-add_executable(fast-detect-gpt src/main.cpp
+add_executable(DetectLlama src/main.cpp
         src/detect.cpp
         src/utils.cpp
         src/io.cpp
@@ -89,4 +89,4 @@ add_executable(fast-detect-gpt src/main.cpp
         include/io.h
 )
 
-target_link_libraries(fast-detect-gpt PRIVATE llama argparse::argparse)
+target_link_libraries(DetectLlama PRIVATE llama argparse::argparse)

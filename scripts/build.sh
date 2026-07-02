@@ -4,7 +4,7 @@ set -euo pipefail
 BUILD_DIR="build"
 GPU_BACKEND="auto"
 JOBS="$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 6)"
-TARGET="fast-detect-gpt"
+TARGET="DetectLlama"
 
 usage() {
     cat <<EOF
@@ -139,7 +139,7 @@ echo "    build dir: $BUILD_DIR"
 echo "    gpu:       $GPU_BACKEND"
 
 START_CONFIGURE="$(date +%s)"
-run_with_idle_spinner cmake -B "$BUILD_DIR" . -DFAST_DETECT_GPU="$GPU_BACKEND"
+run_with_idle_spinner cmake -B "$BUILD_DIR" . -DDETECT_LLAMA_GPU="$GPU_BACKEND"
 END_CONFIGURE="$(date +%s)"
 
 LLAMA_SRC="$BUILD_DIR/_deps/llama_cpp-src"

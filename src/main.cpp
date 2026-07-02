@@ -13,7 +13,7 @@ int main(const int argc, char * argv[]) {
 
     std::signal(SIGINT, signal_handler);
 
-    argparse::ArgumentParser program("fast-detect-gpt", "0.1.0");
+    argparse::ArgumentParser program("DetectLlama", "0.1.0");
 
     program.add_argument("--verbose").help("Verbosity level").default_value(false).implicit_value(true);
     program.add_argument("--gpu").help("Enable GPU acceleration").default_value(false).implicit_value(true);

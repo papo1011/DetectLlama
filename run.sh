@@ -1,4 +1,4 @@
-EXE_NAME="fast-detect-gpt"
+EXE_NAME="DetectLlama"
 BUILD_DIR="build"
 MODEL_DIR="models"
 INPUT_DIR="inputs"
