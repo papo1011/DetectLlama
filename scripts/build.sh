@@ -4,7 +4,7 @@ set -euo pipefail
 BUILD_DIR="build"
 GPU_BACKEND="auto"
 JOBS="$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 6)"
-TARGET="DetectLlama"
+TARGETS=("DetectLlama" "llama-cli")
 
 usage() {
     cat <<EOF
@@ -158,11 +158,11 @@ else
 fi
 
 echo "==> Build"
-echo "    target: $TARGET"
+echo "    targets: ${TARGETS[*]}"
 echo "    jobs:   $JOBS"
 
 START_BUILD="$(date +%s)"
-run_with_idle_spinner cmake --build "$BUILD_DIR" --target "$TARGET" --parallel "$JOBS"
+run_with_idle_spinner cmake --build "$BUILD_DIR" --target "${TARGETS[@]}" --parallel "$JOBS"
 END_BUILD="$(date +%s)"
 END_TOTAL="$(date +%s)"
 

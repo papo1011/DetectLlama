@@ -24,8 +24,8 @@ int main(const int argc, char * argv[]) {
         .help("Path to the GGUF model file")
         .default_value("../models/tiiuae-falcon-7b-instruct-Q5_K_M.gguf");
     program.add_argument("-f", "--file").help("Path to the input text file").required();
-    program.add_argument("-c", "--ctx").help("Size of the prompt context").default_value(4096).scan<'i', int>();
-    program.add_argument("-b", "--batch").help("Logical max batch size").default_value(4096).scan<'i', int>();
+    program.add_argument("-c", "--ctx").help("Size of the prompt context").default_value(2048).scan<'i', int>();
+    program.add_argument("-b", "--batch").help("Logical max batch size").default_value(2048).scan<'i', int>();
 
     try {
         program.parse_args(argc, argv);
