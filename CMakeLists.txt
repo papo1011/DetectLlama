@@ -19,10 +19,6 @@ FetchContent_MakeAvailable(argparse)
 # ------ llama.cpp ------
 find_package(llama REQUIRED)
 
-# ------ arrow ------
-find_package(Arrow REQUIRED)
-find_package(Parquet REQUIRED)
-
 add_executable(fast-detect-gpt src/main.cpp
         src/detect.cpp
         src/utils.cpp
@@ -32,4 +28,4 @@ add_executable(fast-detect-gpt src/main.cpp
         include/io.h
 )
 
-target_link_libraries(fast-detect-gpt PRIVATE llama argparse::argparse Arrow::arrow_shared Parquet::parquet_shared)
+target_link_libraries(fast-detect-gpt PRIVATE llama argparse::argparse)

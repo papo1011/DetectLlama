@@ -27,4 +27,4 @@ if [ ! -f "$MODEL_PATH" ]; then
     wget --show-progress -c "$MODEL_URL" -O "$MODEL_PATH"
 fi
 
-$EXECUTABLE -m "$MODEL_PATH" -f "$INPUT_PATH" --col "code"
+$EXECUTABLE -m "$MODEL_PATH" -f "$INPUT_PATH"

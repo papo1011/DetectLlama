@@ -46,10 +46,9 @@ distinguishing between human and AI written text with high accuracy and minimal 
 
 ### Before building
 
-Next 2 steps are **required!!**
+This step is **required!!**
 
 - [install llama.cpp](https://github.com/ggml-org/llama.cpp/blob/master/docs/install.md)
-- [install arrow](https://arrow.apache.org/install/) (in order to use parquet file as input)
 
 ### How to build
 
@@ -67,7 +66,7 @@ cmake --build ./build --target fast-detect-gpt -j 6
 - If you have a model already downloaded, move it to the models/ folder or symlink it there, then set MODEL_NAME in the
   .env
   file to the folder name of the model
-- move your input text file to the inputs/ folder and set INPUT_FILE in the .env file to the file name
+- move your raw text input file to the inputs/ folder and set INPUT_FILE in the .env file to the file name
 - run:
 - ```bash
   bash ./run.sh

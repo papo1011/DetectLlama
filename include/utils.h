@@ -1,6 +1,7 @@
 #pragma once
 #include "llama.h"
 
+#include <atomic>
 #include <filesystem>
 #include <string>
 
