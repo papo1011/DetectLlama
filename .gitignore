@@ -6,6 +6,7 @@ Thumbs.db
 
 # --- Build artefacts (CMake / Ninja / Make) ---
 build/
+build-*/
 cmake-build-*/
 CMakeFiles/
 CMakeCache.txt
