@@ -1,5 +1,6 @@
 #include "../include/detect.h"
 
+#include <chrono>
 #include <cmath>
 #include <iostream>
 
@@ -73,7 +74,9 @@ double compute_discrepancy(const std::vector<float *> &     all_logits,
     return (sum_ll - sum_mean) / std::sqrt(sum_var);
 }
 
-double analyze_text(const LlamaState & llama, const std::string & text, const int n_ctx) {
+AnalysisResult analyze_text_detailed(const LlamaState & llama, const std::string & text, const int n_ctx) {
+    AnalysisResult result;
+
     // clear cache
     const auto memory = llama_get_memory(llama.ctx);
     llama_memory_seq_rm(memory, -1, -1, -1);
@@ -90,15 +93,16 @@ double analyze_text(const LlamaState & llama, const std::string & text, const in
                                   static_cast<int>(tokens.size()), true, false);
     }
     tokens.resize(n_tokens);
+    result.tokens = n_tokens;
 
     if (n_tokens < 2) {
-        std::cerr << "Not enough tokens provided (minimum 2 tokens)" << std::endl;
-        return 1;
+        result.error = "Not enough tokens provided (minimum 2 tokens)";
+        return result;
     }
 
     if (n_tokens > n_ctx) {
-        std::cerr << "Too many tokens provided: " << n_tokens << " (maximum " << n_ctx << ")" << std::endl;
-        return 1;
+        result.error = "Too many tokens provided: " + std::to_string(n_tokens) + " (maximum " + std::to_string(n_ctx) + ")";
+        return result;
     }
 
     auto batch = llama_batch_init(n_tokens, 0, 1);
@@ -111,12 +115,11 @@ double analyze_text(const LlamaState & llama, const std::string & text, const in
         batch.logits[i]    = true;
     }
 
-    std::cout << "Running inference on " << n_tokens << " tokens" << std::endl;
-
+    const auto started_at = std::chrono::steady_clock::now();
     if (llama_decode(llama.ctx, batch) != 0) {
-        std::cerr << "Inference failed" << std::endl;
+        result.error = "Inference failed";
         llama_batch_free(batch);
-        return 0.0;
+        return result;
     }
 
     std::vector<float *> logits_ptrs;
@@ -127,7 +130,22 @@ double analyze_text(const LlamaState & llama, const std::string & text, const in
 
     const int    vocab_size = llama_vocab_n_tokens(llama.vocab);
     const double score      = compute_discrepancy(logits_ptrs, tokens, vocab_size);
+    const auto   ended_at   = std::chrono::steady_clock::now();
 
     llama_batch_free(batch);
-    return score;
+
+    result.ok                = true;
+    result.discrepancy       = score;
+    result.elapsed_seconds   = std::chrono::duration<double>(ended_at - started_at).count();
+    result.tokens_per_second = result.elapsed_seconds > 0.0 ? static_cast<double>(n_tokens) / result.elapsed_seconds : 0.0;
+    return result;
+}
+
+double analyze_text(const LlamaState & llama, const std::string & text, const int n_ctx) {
+    const auto result = analyze_text_detailed(llama, text, n_ctx);
+    if (!result.ok) {
+        std::cerr << result.error << std::endl;
+        return 0.0;
+    }
+    return result.discrepancy;
 }
