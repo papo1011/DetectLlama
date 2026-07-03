@@ -12,7 +12,7 @@ DETECT_LLAMA_DRY_RUN="${DETECT_LLAMA_DRY_RUN:-0}"
 
 usage() {
     cat <<EOF
-Usage: $0 <input-file-path>
+Usage: $0
 
 Model selection is automatic. If the selected GGUF is not already cached,
 scripts/download-model.sh installs it with llama-cli -hf.
@@ -41,15 +41,8 @@ detect_accelerator() {
     fi
 }
 
-if [ "$#" -ne 1 ]; then
+if [ "$#" -ne 0 ]; then
     usage >&2
-    exit 1
-fi
-
-INPUT_PATH="$1"
-
-if [ ! -f "$INPUT_PATH" ]; then
-    echo "Input file not found: $INPUT_PATH" >&2
     exit 1
 fi
 
@@ -73,7 +66,7 @@ if [ "$USE_GPU_LC" = "1" ] || [ "$USE_GPU_LC" = "true" ] || { [ "$USE_GPU_LC" = 
     GPU_ARGS=(--gpu)
 fi
 
-CMD=("$EXECUTABLE" -m "$MODEL_PATH" -f "$INPUT_PATH" -c "$N_CTX" -b "$N_BATCH" "${GPU_ARGS[@]}")
+CMD=("$EXECUTABLE" -m "$MODEL_PATH" -c "$N_CTX" -b "$N_BATCH" "${GPU_ARGS[@]}")
 
 if [ "$DETECT_LLAMA_DRY_RUN" = "1" ]; then
     printf "Dry run command:"

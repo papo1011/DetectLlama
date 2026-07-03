@@ -83,14 +83,16 @@ cmake -B build . -DDETECT_LLAMA_GPU=vulkan
 
 ### How to use
 
-- Run DetectLlama with an input file path:
+- Run DetectLlama to open the interactive TUI:
 
 ```bash
-bash ./scripts/run.sh /path/to/your-input-file.txt
+bash ./scripts/run.sh
 ```
 
+Paste or type the text file path in the TUI, then choose `Analyze`.
+
 - DetectLlama profiles the local machine before downloading Falcon 7B:
-    - available disk space in `models/`
+    - available disk space in the llama.cpp/Hugging Face cache
     - total and available system RAM
     - NVIDIA VRAM when `nvidia-smi` is available
     - Apple Silicon unified memory on macOS
@@ -104,7 +106,7 @@ bash ./scripts/run.sh /path/to/your-input-file.txt
 To inspect the hardware decision without running inference:
 
 ```bash
-DETECT_LLAMA_DRY_RUN=1 bash ./scripts/run.sh /path/to/your-input-file.txt
+DETECT_LLAMA_DRY_RUN=1 bash ./scripts/run.sh
 ```
 
 To only install the selected GGUF into the llama.cpp/Hugging Face cache:

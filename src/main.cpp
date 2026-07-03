@@ -4,11 +4,10 @@
 #include "../include/llama_logging.h"
 #include "../include/llama_state.h"
 #include "../include/signals.h"
+#include "../include/tui.h"
 
 #include <argparse/argparse.hpp>
 #include <csignal>
-#include <filesystem>
-#include <iomanip>
 #include <iostream>
 
 int main(const int argc, char * argv[]) {
@@ -23,7 +22,6 @@ int main(const int argc, char * argv[]) {
     program.add_argument("-m", "--model")
         .help("Path to the GGUF model file")
         .default_value("../models/tiiuae-falcon-7b-instruct-Q5_K_M.gguf");
-    program.add_argument("-f", "--file").help("Path to the input text file").required();
     program.add_argument("-c", "--ctx").help("Size of the prompt context").default_value(2048).scan<'i', int>();
     program.add_argument("-b", "--batch").help("Logical max batch size").default_value(2048).scan<'i', int>();
 
@@ -38,14 +36,8 @@ int main(const int argc, char * argv[]) {
     const bool   verbose     = program.get<bool>("--verbose");
     const bool   gpu         = program.get<bool>("--gpu");
     const auto   model_path  = program.get<std::string>("--model");
-    const auto   input_file  = program.get<std::string>("--file");
     const int    n_ctx       = program.get<int>("--ctx");
     const int    n_batch     = program.get<int>("--batch");
-
-    if (!std::filesystem::exists(input_file) || !std::filesystem::is_regular_file(input_file)) {
-        std::cerr << "Input must be an existing regular file: " << input_file << std::endl;
-        return 1;
-    }
 
     if (!verbose) {
         llama_log_set(custom_log, nullptr);
@@ -61,14 +53,7 @@ int main(const int argc, char * argv[]) {
         return 1;
     }
 
-    std::cout << "Processing text file: " << input_file << std::endl;
-
-    if (std::string input_text; !read_file_to_string(input_file, input_text)) {
-        std::cerr << "Failed to read input file." << std::endl;
-    } else {
-        const double discrepancy = analyze_text(llama, input_text, n_ctx);
-        std::cout << "DISCREPANCY: " << std::fixed << std::setprecision(4) << discrepancy << std::endl;
-    }
+    run_tui(llama, n_ctx);
 
     llama_free(llama.ctx);
     llama_model_free(llama.model);
