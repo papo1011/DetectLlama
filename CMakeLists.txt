@@ -108,16 +108,23 @@ endif()
 add_executable(DetectLlama src/main.cpp
         src/console.cpp
         src/detect.cpp
+        src/hardware_profile.cpp
         src/io.cpp
         src/llama_logging.cpp
         src/llama_state.cpp
+        src/model_catalog.cpp
+        src/model_manager.cpp
         src/signals.cpp
         src/tui.cpp
+        include/app_config.h
         include/console.h
         include/detect.h
+        include/hardware_profile.h
         include/io.h
         include/llama_logging.h
         include/llama_state.h
+        include/model_catalog.h
+        include/model_manager.h
         include/signals.h
         include/tui.h
 )
