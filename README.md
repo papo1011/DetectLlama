@@ -89,7 +89,12 @@ cmake -B build . -DDETECT_LLAMA_GPU=vulkan
 bash ./scripts/run.sh
 ```
 
-Paste or type the text file path in the TUI, then choose `Analyze`.
+DetectLlama opens a full-screen TUI immediately. It profiles the machine, highlights the recommended Falcon 7B GGUF
+quantization, shows which variants are already cached, and lets you download a missing model with `llama-cli -hf`.
+
+After the model is ready, paste, type, or drag a `.md` or `.txt` file into the TUI path field, then choose `Analyze`.
+Most terminals implement drag and drop by pasting the file path; DetectLlama normalizes quoted paths, escaped spaces,
+and `file://` URIs.
 
 - DetectLlama profiles the local machine before downloading Falcon 7B:
     - available disk space in the llama.cpp/Hugging Face cache
@@ -98,9 +103,9 @@ Paste or type the text file path in the TUI, then choose `Analyze`.
     - Apple Silicon unified memory on macOS
     - CPU core count and OS/architecture
 - The auto selector targets about `TARGET_TOKENS_PER_SEC=30` with a conservative memory budget. It chooses the highest
-  practical Falcon 7B GGUF quantization that should stay near that target on the detected accelerator, then installs it
-  through `llama-cli -hf` into the standard llama.cpp/Hugging Face cache. If only CPU is usable, it falls back to the
-  smallest viable quant and warns that 30 tokens/sec is unlikely.
+  practical Falcon 7B GGUF quantization that should stay near that target on the detected accelerator. If the model is
+  missing, the TUI offers a `Download` action that installs it through `llama-cli -hf` into the standard llama.cpp/Hugging
+  Face cache. If only CPU is usable, it falls back to the smallest viable quant and warns that 30 tokens/sec is unlikely.
 - Optional: export `HF_TOKEN` if you switch to a private or gated Hugging Face model.
 
 To inspect the hardware decision without running inference:
