@@ -1,5 +1,5 @@
 #pragma once
 
-#include "./llama_state.h"
+#include "./app_config.h"
 
-int run_tui(const LlamaState & llama, int n_ctx);
+int run_tui(const AppConfig & config);

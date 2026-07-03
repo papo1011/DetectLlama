@@ -15,7 +15,7 @@ usage() {
 Usage: $0
 
 Model selection is automatic. If the selected GGUF is not already cached,
-scripts/download-model.sh installs it with llama-cli -hf.
+the TUI lets you download it with llama-cli -hf.
 EOF
 }
 
@@ -52,13 +52,6 @@ if [ ! -x "$EXECUTABLE" ] && [ "$DETECT_LLAMA_DRY_RUN" != "1" ]; then
     exit 1
 fi
 
-if [ "$DETECT_LLAMA_DRY_RUN" = "1" ]; then
-    "$ROOT_DIR/scripts/download-model.sh" --dry-run
-    MODEL_PATH="<auto-selected-llama.cpp-cache-gguf>"
-else
-    MODEL_PATH="$("$ROOT_DIR/scripts/download-model.sh" --print-path)"
-fi
-
 GPU_ARGS=()
 USE_GPU_LC="$(to_lower "$USE_GPU")"
 ACCELERATOR="$(detect_accelerator)"
@@ -66,7 +59,7 @@ if [ "$USE_GPU_LC" = "1" ] || [ "$USE_GPU_LC" = "true" ] || { [ "$USE_GPU_LC" = 
     GPU_ARGS=(--gpu)
 fi
 
-CMD=("$EXECUTABLE" -m "$MODEL_PATH" -c "$N_CTX" -b "$N_BATCH" "${GPU_ARGS[@]}")
+CMD=("$EXECUTABLE" --build-dir "$BUILD_DIR" --model-repo "${MODEL_REPO:-maddes8cht/tiiuae-falcon-7b-instruct-gguf}" --target-tps "${TARGET_TOKENS_PER_SEC:-30}" -c "$N_CTX" -b "$N_BATCH" "${GPU_ARGS[@]}")
 
 if [ "$DETECT_LLAMA_DRY_RUN" = "1" ]; then
     printf "Dry run command:"
