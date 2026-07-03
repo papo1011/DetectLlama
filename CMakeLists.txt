@@ -20,6 +20,15 @@ FetchContent_Declare(
 
 FetchContent_MakeAvailable(argparse)
 
+# ------ FTXUI ------
+FetchContent_Declare(
+        ftxui
+        GIT_REPOSITORY https://github.com/ArthurSonzogni/FTXUI.git
+        GIT_TAG v5.0.0
+)
+
+FetchContent_MakeAvailable(ftxui)
+
 # ------ llama.cpp ------
 find_package(llama QUIET)
 
@@ -103,12 +112,14 @@ add_executable(DetectLlama src/main.cpp
         src/llama_logging.cpp
         src/llama_state.cpp
         src/signals.cpp
+        src/tui.cpp
         include/console.h
         include/detect.h
         include/io.h
         include/llama_logging.h
         include/llama_state.h
         include/signals.h
+        include/tui.h
 )
 
-target_link_libraries(DetectLlama PRIVATE llama argparse::argparse)
+target_link_libraries(DetectLlama PRIVATE llama argparse::argparse ftxui::screen ftxui::dom ftxui::component)
