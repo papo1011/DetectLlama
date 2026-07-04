@@ -5,7 +5,7 @@ It uses [llama.cpp](https://github.com/ggml-org/llama.cpp) and a Falcon 7B GGUF 
 your own device without sending the text to an external API.
 
 The goal is simple: open DetectLlama, let it choose the best model quantization for your machine, download it if needed,
-then drag or paste a `.txt` or `.md` file and analyze it locally.
+then paste text directly or analyze a local `.txt`/`.md` file.
 
 <p align="center">
   <img src="assets/tui.png" alt="DetectLlama TUI" width="900"/>
@@ -39,21 +39,27 @@ Run the TUI:
 ./scripts/run.sh
 ```
 
-DetectLlama opens immediately in fullscreen mode. If the recommended model is already cached, it loads it. If not, choose
-`Download` in the TUI, then `Load` when the model is available.
+DetectLlama opens immediately in fullscreen mode. If the recommended model is already cached, it loads it. If not, type
+`/models`, choose a quantization, and press Enter to download and load it.
 
-After the model is ready, paste, type, or drag a `.txt` or `.md` file into the path field and choose `Analyze`.
-Most terminals implement drag and drop by pasting the file path; DetectLlama normalizes quoted paths, escaped spaces, and
-`file://` URIs.
+After the model is ready, use the prompt field:
+
+- type `/` to open the command dropdown
+- enter `/models` to open the model picker
+- enter `/path ./file.txt` to analyze a local `.txt` or `.md` file
+- paste text directly to detect it without creating a file first
+
+Most terminals implement drag and drop by pasting the file path; DetectLlama still normalizes quoted paths, escaped spaces,
+and `file://` URIs.
 
 ## What The TUI Shows
 
 - the recommended quantization for your device
 - all available Falcon 7B GGUF variants
 - whether each model is already cached or missing
-- download and load actions
+- model selection and download through `/models`
 - analysis status while inference is running
-- discrepancy score, token count, elapsed time, and tokens/sec
+- AI probability estimate, discrepancy score, token count, elapsed time, and tokens/sec in the right sidebar
 
 ## Model Selection
 

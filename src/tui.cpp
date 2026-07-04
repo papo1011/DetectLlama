@@ -14,6 +14,7 @@
 #include <atomic>
 #include <chrono>
 #include <cctype>
+#include <cmath>
 #include <filesystem>
 #include <iomanip>
 #include <memory>
@@ -21,6 +22,7 @@
 #include <sstream>
 #include <string>
 #include <string_view>
+#include <system_error>
 #include <thread>
 
 namespace {
@@ -39,6 +41,15 @@ std::string interpret_score(const double score) {
         return "Likely AI-generated or model-like";
     }
     return "Ambiguous; compare against a calibrated threshold";
+}
+
+double ai_probability_from_score(const double score) {
+    const double probability = 1.0 / (1.0 + std::exp(1.35 * score));
+    return std::clamp(probability, 0.0, 1.0);
+}
+
+std::string format_percent(const double probability) {
+    return format_fixed(probability * 100.0, 1) + "%";
 }
 
 bool is_hex(const char value) {
@@ -68,6 +79,54 @@ std::string trim_copy(const std::string & value) {
 std::string lower_copy(std::string value) {
     std::transform(value.begin(), value.end(), value.begin(), [](unsigned char ch) { return static_cast<char>(std::tolower(ch)); });
     return value;
+}
+
+bool starts_with_slash_command(const std::string & value, const std::string_view command) {
+    const std::string trimmed = trim_copy(value);
+    if (trimmed.size() < command.size()) {
+        return false;
+    }
+
+    const std::string head = lower_copy(trimmed.substr(0, command.size()));
+    if (head != command) {
+        return false;
+    }
+
+    return trimmed.size() == command.size() || std::isspace(static_cast<unsigned char>(trimmed[command.size()]));
+}
+
+std::string slash_command_argument(const std::string & value, const std::string_view command) {
+    const std::string trimmed = trim_copy(value);
+    if (trimmed.size() <= command.size()) {
+        return "";
+    }
+    return trim_copy(trimmed.substr(command.size()));
+}
+
+std::vector<std::string> slash_command_matches(const std::string & value) {
+    static const std::vector<std::string> commands = { "/models", "/path" };
+    const std::string                     trimmed = lower_copy(trim_copy(value));
+    if (trimmed.empty() || trimmed.front() != '/' || trimmed.find_first_of(" \t\r\n") != std::string::npos) {
+        return {};
+    }
+
+    std::vector<std::string> matches;
+    for (const auto & command : commands) {
+        if (command.rfind(trimmed, 0) == 0) {
+            matches.push_back(command);
+        }
+    }
+    return matches;
+}
+
+std::string command_description(const std::string & command) {
+    if (command == "/models") {
+        return "select or download a model";
+    }
+    if (command == "/path") {
+        return "analyze a local .txt or .md file";
+    }
+    return "";
 }
 
 std::string percent_decode(const std::string & value) {
@@ -166,9 +225,11 @@ int run_tui(const AppConfig & config) {
     std::string   loaded_model_quant;
     std::string   loaded_model_path;
     std::string   model_status = "Profiling this machine and checking the llama.cpp cache...";
-    std::string   operation_status = "Drop, paste, or type a .md/.txt file path after the model is ready.";
-    std::string   input_path;
+    std::string   operation_status = "Type / for commands, /path <file>, or paste text to detect.";
+    std::string   prompt;
+    std::string   input_source = "-";
     std::string   score_text = "-";
+    std::string   ai_probability = "-";
     std::string   interpretation = "Waiting for model.";
     std::string   token_count = "-";
     std::string   elapsed = "-";
@@ -177,6 +238,9 @@ int run_tui(const AppConfig & config) {
     bool          model_busy = true;
     bool          analysis_busy = false;
     bool          model_ready = false;
+    bool          slash_menu_open = false;
+    bool          model_picker_open = false;
+    int           slash_menu_index = 0;
     int           animation_frame = 0;
 
     auto screen = ScreenInteractive::Fullscreen();
@@ -194,6 +258,16 @@ int run_tui(const AppConfig & config) {
         }
         selected_model_index = std::clamp(selected_model_index, 0, static_cast<int>(decision.models.size()) - 1);
         return &decision.models[selected_model_index];
+    };
+
+    auto refresh_slash_menu_state = [&] {
+        const auto matches = slash_command_matches(prompt);
+        slash_menu_open = !model_picker_open && !matches.empty();
+        if (slash_menu_open) {
+            slash_menu_index = std::clamp(slash_menu_index, 0, static_cast<int>(matches.size()) - 1);
+        } else {
+            slash_menu_index = 0;
+        }
     };
 
     auto load_model = [&](const ModelStatus model) {
@@ -224,8 +298,8 @@ int run_tui(const AppConfig & config) {
                 loaded_model_quant = model.info.quant;
                 loaded_model_path = model.path;
                 model_status = "Model ready: " + model.info.quant;
-                operation_status = "Drop, paste, or type a .md/.txt file path, then choose Analyze.";
-                interpretation = "Ready to analyze local Markdown or text files.";
+                operation_status = "Type / for commands, /path <file>, or paste text directly into the prompt.";
+                interpretation = "Ready to analyze files or pasted text.";
             } else {
                 free_llama_state(next);
                 model_status = "Failed to load model: " + model.path;
@@ -269,7 +343,7 @@ int run_tui(const AppConfig & config) {
                 } else {
                     model_busy = false;
                     model_status = "Recommended model is not installed: " + recommended.info.quant;
-                    operation_status = "Choose Download to install it with llama-cli -hf, or inspect the other quantizations.";
+                    operation_status = "Use /models to select and download a quantization.";
                     interpretation = decision.reason;
                 }
             }
@@ -331,7 +405,7 @@ int run_tui(const AppConfig & config) {
             refresh_model_cache_state();
             model = *selected_model();
             if (!model.cached) {
-                operation_status = "Selected model is not installed. Choose Download first.";
+                operation_status = "Selected model is not installed. Open /models and press Enter to download it.";
                 return;
             }
         }
@@ -357,10 +431,141 @@ int run_tui(const AppConfig & config) {
         operation_status = "Selected " + decision.models[selected_model_index].info.quant + ".";
     };
 
+    auto open_models_picker = [&] {
+        std::lock_guard<std::mutex> lock(state_mutex);
+        if (!decision_ready || decision.models.empty()) {
+            operation_status = "Model list is not ready yet.";
+            return;
+        }
+        if (model_busy || analysis_busy) {
+            operation_status = "Please wait for the current operation to finish.";
+            return;
+        }
+        refresh_model_cache_state();
+        model_picker_open = true;
+        slash_menu_open = false;
+        prompt.clear();
+        operation_status = "Select a model. Enter loads cached models or downloads missing ones.";
+    };
+
+    auto handle_models_command = [&](const std::string & raw_prompt) {
+        if (!starts_with_slash_command(raw_prompt, "/models")) {
+            return false;
+        }
+
+        const std::string arg = lower_copy(slash_command_argument(raw_prompt, "/models"));
+        if (arg.empty()) {
+            open_models_picker();
+            screen.PostEvent(Event::Custom);
+            return true;
+        }
+
+        ModelStatus model_to_load;
+        bool        should_load = false;
+        bool        should_download = false;
+        {
+            std::lock_guard<std::mutex> lock(state_mutex);
+            if (!decision_ready || decision.models.empty()) {
+                operation_status = "Model list is not ready yet.";
+                return true;
+            }
+            if (model_busy || analysis_busy) {
+                operation_status = "Please wait for the current operation to finish.";
+                return true;
+            }
+
+            refresh_model_cache_state();
+            int next_index = -1;
+            for (int index = 0; index < static_cast<int>(decision.models.size()); ++index) {
+                const auto & model = decision.models[index];
+                if (lower_copy(model.info.quant).find(arg) != std::string::npos ||
+                    lower_copy(model.info.filename).find(arg) != std::string::npos ||
+                    std::to_string(model.info.rank) == arg) {
+                    next_index = index;
+                    break;
+                }
+            }
+            if (next_index < 0) {
+                operation_status = "Unknown model. Use /models to open the selector or /models <quant>.";
+                return true;
+            }
+
+            selected_model_index = next_index;
+            model_to_load = decision.models[selected_model_index];
+            operation_status = "Selected " + model_to_load.info.quant + ".";
+            if (model_to_load.cached) {
+                operation_status += " Loading from cache.";
+                should_load = true;
+            } else {
+                model_status = "Selected model is not installed: " + model_to_load.info.quant;
+                operation_status += " Downloading with llama-cli.";
+                interpretation = decision.reason;
+                should_download = true;
+            }
+        }
+
+        screen.PostEvent(Event::Custom);
+        if (should_load) {
+            start_model_task([&, model_to_load] { load_model(model_to_load); });
+        } else if (should_download) {
+            download_selected_model();
+        }
+        return true;
+    };
+
+    auto activate_selected_model = [&] {
+        ModelStatus model;
+        bool        cached = false;
+        {
+            std::lock_guard<std::mutex> lock(state_mutex);
+            if (!decision_ready || decision.models.empty()) {
+                operation_status = "Model list is not ready yet.";
+                return;
+            }
+            if (model_busy || analysis_busy) {
+                operation_status = "Please wait for the current operation to finish.";
+                return;
+            }
+            refresh_model_cache_state();
+            model = *selected_model();
+            cached = model.cached;
+            model_picker_open = false;
+            slash_menu_open = false;
+            operation_status = cached ? "Loading " + model.info.quant + " from cache."
+                                      : "Downloading " + model.info.quant + " with llama-cli.";
+        }
+
+        screen.PostEvent(Event::Custom);
+        if (cached) {
+            start_model_task([&, model] { load_model(model); });
+        } else {
+            download_selected_model();
+        }
+    };
+
+    auto apply_slash_command = [&](const std::string & command) {
+        if (command == "/models") {
+            open_models_picker();
+            screen.PostEvent(Event::Custom);
+            return;
+        }
+
+        if (command == "/path") {
+            {
+                std::lock_guard<std::mutex> lock(state_mutex);
+                prompt = "/path ";
+                slash_menu_open = false;
+                operation_status = "Write or paste the file path after /path.";
+            }
+            screen.PostEvent(Event::Custom);
+        }
+    };
+
     InputOption input_options;
-    input_options.content = &input_path;
-    input_options.placeholder = "drop or paste a .md/.txt file path";
-    input_options.multiline = false;
+    input_options.content = &prompt;
+    input_options.placeholder = "Type / for commands, /path ./sample.txt, or paste text to detect";
+    input_options.multiline = true;
+    input_options.on_change = [&] { refresh_slash_menu_state(); };
     input_options.transform = [](InputState state) {
         state.element |= color(Color::White);
         if (state.is_placeholder) {
@@ -376,6 +581,56 @@ int run_tui(const AppConfig & config) {
     auto input = Input(input_options);
 
     auto analyze = [&] {
+        std::string raw_prompt;
+        {
+            std::lock_guard<std::mutex> lock(state_mutex);
+            raw_prompt = prompt;
+        }
+
+        const std::string trimmed_prompt = trim_copy(raw_prompt);
+        if (trimmed_prompt.empty()) {
+            std::lock_guard<std::mutex> lock(state_mutex);
+            operation_status = "Write /models, /path <file>, or paste text before analyzing.";
+            return;
+        }
+
+        if (handle_models_command(trimmed_prompt)) {
+            return;
+        }
+
+        if (trimmed_prompt.front() == '/' && !starts_with_slash_command(trimmed_prompt, "/path")) {
+            std::lock_guard<std::mutex> lock(state_mutex);
+            operation_status = "Unknown command. Available commands: /models and /path <file>.";
+            return;
+        }
+
+        bool        use_file = false;
+        std::string path;
+        std::string inline_text;
+        std::string source_label;
+        if (starts_with_slash_command(trimmed_prompt, "/path")) {
+            path = normalize_dropped_path(slash_command_argument(trimmed_prompt, "/path"));
+            if (path.empty()) {
+                std::lock_guard<std::mutex> lock(state_mutex);
+                operation_status = "Use /path followed by a .md or .txt file path.";
+                return;
+            }
+            use_file = true;
+            source_label = "File: " + fs::path(path).filename().string();
+        } else {
+            const std::string possible_path = normalize_dropped_path(trimmed_prompt);
+            std::error_code   path_error;
+            if (possible_path.find_first_of("\r\n") == std::string::npos && possible_path.size() < 4096 &&
+                fs::exists(possible_path, path_error) && fs::is_regular_file(possible_path, path_error)) {
+                use_file = true;
+                path = possible_path;
+                source_label = "File: " + fs::path(path).filename().string();
+            } else {
+                inline_text = trimmed_prompt;
+                source_label = "Pasted text";
+            }
+        }
+
         std::shared_ptr<LlamaState> llama_for_analysis;
         {
             std::lock_guard<std::mutex> lock(state_mutex);
@@ -388,30 +643,33 @@ int run_tui(const AppConfig & config) {
                 return;
             }
             analysis_busy = true;
-            operation_status = "Analyzing file. Please wait...";
+            operation_status = use_file ? "Reading file and running detection..." : "Running detection on pasted text...";
+            input_source = source_label;
             score_text = "-";
+            ai_probability = "-";
             interpretation = "Running inference and scoring.";
             token_count = "-";
             elapsed = "-";
             speed = "measuring...";
             llama_for_analysis = llama;
+            if (use_file) {
+                prompt = "/path " + path;
+            }
         }
 
-        const std::string path = normalize_dropped_path(input_path);
-        {
-            std::lock_guard<std::mutex> lock(state_mutex);
-            input_path = path;
-        }
         if (analysis_worker.joinable()) {
             analysis_worker.join();
         }
 
-        analysis_worker = std::thread([&, path, llama_for_analysis] {
-            if (!fs::exists(path) || !fs::is_regular_file(path)) {
+        analysis_worker = std::thread([&, use_file, path, inline_text, source_label, llama_for_analysis] {
+            std::string input_text = inline_text;
+            std::error_code path_error;
+            if (use_file && (!fs::exists(path, path_error) || !fs::is_regular_file(path, path_error))) {
                 {
                     std::lock_guard<std::mutex> lock(state_mutex);
                     operation_status = "Input must be an existing regular file.";
                     interpretation = "No analysis run.";
+                    ai_probability = "-";
                     speed = "-";
                     analysis_busy = false;
                 }
@@ -419,11 +677,12 @@ int run_tui(const AppConfig & config) {
                 return;
             }
 
-            if (!is_supported_input_file(path)) {
+            if (use_file && !is_supported_input_file(path)) {
                 {
                     std::lock_guard<std::mutex> lock(state_mutex);
                     operation_status = "Only .md and .txt files are supported for now.";
                     interpretation = "No analysis run.";
+                    ai_probability = "-";
                     speed = "-";
                     analysis_busy = false;
                 }
@@ -431,12 +690,12 @@ int run_tui(const AppConfig & config) {
                 return;
             }
 
-            std::string input_text;
-            if (!read_file_to_string(path, input_text)) {
+            if (use_file && !read_file_to_string(path, input_text)) {
                 {
                     std::lock_guard<std::mutex> lock(state_mutex);
                     operation_status = "Failed to read input file.";
                     interpretation = "No analysis run.";
+                    ai_probability = "-";
                     speed = "-";
                     analysis_busy = false;
                 }
@@ -451,17 +710,20 @@ int run_tui(const AppConfig & config) {
                     operation_status = result.error;
                     interpretation = "No score produced.";
                     score_text = "-";
+                    ai_probability = "-";
                     token_count = std::to_string(result.tokens);
                     elapsed = "-";
                     speed = "-";
                 } else {
                     operation_status = "Analysis complete.";
                     score_text = format_fixed(result.discrepancy, 4);
+                    ai_probability = format_percent(ai_probability_from_score(result.discrepancy));
                     interpretation = interpret_score(result.discrepancy);
                     token_count = std::to_string(result.tokens);
                     elapsed = format_fixed(result.elapsed_seconds, 2) + " s";
                     speed = format_fixed(result.tokens_per_second, 2) + " tokens/sec";
                 }
+                input_source = source_label;
                 analysis_busy = false;
             }
             screen.PostEvent(Event::Custom);
@@ -474,11 +736,15 @@ int run_tui(const AppConfig & config) {
             operation_status = "Cannot clear while an operation is running.";
             return;
         }
-        input_path.clear();
-        operation_status = model_ready ? "Drop, paste, or type a .md/.txt file path, then choose Analyze."
+        prompt.clear();
+        slash_menu_open = false;
+        model_picker_open = false;
+        operation_status = model_ready ? "Type / for commands, /path <file>, or paste text directly into the prompt."
                                        : "Waiting for model.";
         score_text = "-";
-        interpretation = model_ready ? "Ready to analyze local Markdown or text files." : "Waiting for model.";
+        ai_probability = "-";
+        input_source = "-";
+        interpretation = model_ready ? "Ready to analyze files or pasted text." : "Waiting for model.";
         token_count = "-";
         elapsed = "-";
         speed = "-";
@@ -493,19 +759,11 @@ int run_tui(const AppConfig & config) {
         screen.ExitLoopClosure()();
     };
 
-    auto prev_button = Button("Previous", select_previous_model);
-    auto next_button = Button("Next", select_next_model);
-    auto download_button = Button("Download", download_selected_model);
-    auto load_button = Button("Load", load_selected_cached_model);
     auto analyze_button = Button("Analyze", analyze);
     auto clear_button = Button("Clear", clear);
     auto quit_button = Button("Quit", quit);
 
     auto buttons = Container::Horizontal({
-        prev_button,
-        next_button,
-        download_button,
-        load_button,
         analyze_button,
         clear_button,
         quit_button,
@@ -524,13 +782,19 @@ int run_tui(const AppConfig & config) {
         std::string   model_status_view;
         std::string   operation_status_view;
         std::string   score_view;
+        std::string   ai_probability_view;
+        std::string   input_source_view;
         std::string   interpretation_view;
         std::string   token_count_view;
         std::string   elapsed_view;
         std::string   speed_view;
         std::string   profile_summary_view;
+        std::string   prompt_view;
         bool          busy_view;
         bool          model_ready_view;
+        bool          slash_menu_open_view;
+        bool          model_picker_open_view;
+        int           slash_menu_index_view;
         int           animation_frame_view;
         {
             std::lock_guard<std::mutex> lock(state_mutex);
@@ -541,13 +805,19 @@ int run_tui(const AppConfig & config) {
             model_status_view = model_status;
             operation_status_view = operation_status;
             score_view = score_text;
+            ai_probability_view = ai_probability;
+            input_source_view = input_source;
             interpretation_view = interpretation;
             token_count_view = token_count;
             elapsed_view = elapsed;
             speed_view = speed;
             profile_summary_view = profile_summary;
+            prompt_view = prompt;
             busy_view = model_busy || analysis_busy;
             model_ready_view = model_ready;
+            slash_menu_open_view = slash_menu_open;
+            model_picker_open_view = model_picker_open;
+            slash_menu_index_view = slash_menu_index;
             animation_frame_view = animation_frame;
         }
 
@@ -593,43 +863,99 @@ int run_tui(const AppConfig & config) {
             text(model_status_view) | (busy_view ? color(Color::Yellow) : color(Color::White)),
         });
 
-        auto metrics = vbox({
-                           hbox(text("Discrepancy") | bold, filler(), text(score_view)),
+        std::string selected_model_label = "-";
+        if (decision_ready_view && !decision_view.models.empty()) {
+            selected_model_label = decision_view.models[std::clamp(selected_model_index_view, 0, static_cast<int>(decision_view.models.size()) - 1)].info.quant;
+        }
+        const std::string loaded_model_label = loaded_model_quant_view.empty() ? "-" : loaded_model_quant_view;
+
+        const auto slash_matches = slash_command_matches(prompt_view);
+        Elements   slash_rows;
+        for (int index = 0; index < static_cast<int>(slash_matches.size()); ++index) {
+            const auto & command = slash_matches[index];
+            auto row = hbox({
+                text(index == slash_menu_index_view ? "> " : "  "),
+                text(command) | bold,
+                filler(),
+                text(command_description(command)) | dim,
+            });
+            if (index == slash_menu_index_view) {
+                row |= inverted;
+            }
+            slash_rows.push_back(row);
+        }
+
+        Elements prompt_elements = {
+            hbox(text("Prompt") | bold, filler(), text("/models  /path <file>  paste text") | dim),
+            input->Render() | border | flex,
+        };
+        if (slash_menu_open_view && !slash_rows.empty()) {
+            prompt_elements.push_back(vbox({
+                                          text("Commands") | dim,
+                                          vbox(std::move(slash_rows)),
+                                      }) |
+                                      border | size(WIDTH, LESS_THAN, 52));
+        }
+        auto prompt_panel = vbox(std::move(prompt_elements)) | flex;
+
+        auto result_panel = vbox({
+                                hbox(text("Detection") | bold, filler(), text(input_source_view) | dim),
+                                paragraph(interpretation_view),
+                                separator(),
+                                paragraph(operation_status_view) | color(Color::Cyan),
+                            }) |
+                            border;
+
+        auto model_picker_panel = vbox({
+                                      hbox(text("Models") | bold, filler(), text("Enter load/download  Esc close") | dim),
+                                      vbox(std::move(model_rows)) | yframe | size(HEIGHT, LESS_THAN, 12),
+                                  }) |
+                                  border;
+
+        auto controls_panel = vbox({
+                                  buttons->Render(),
+                              }) |
+                              border;
+
+        Elements main_elements = {
+            prompt_panel,
+            separator(),
+        };
+        if (model_picker_open_view) {
+            main_elements.push_back(model_picker_panel);
+        } else {
+            main_elements.push_back(result_panel);
+        }
+        main_elements.push_back(separator());
+        main_elements.push_back(controls_panel);
+
+        auto main_panel = vbox(std::move(main_elements)) | flex;
+
+        auto sidebar = vbox({
+                           text("Session") | bold,
                            separator(),
+                           hbox(text("AI probability"), filler(), text(ai_probability_view) | bold),
+                           hbox(text("Tokens/sec"), filler(), text(speed_view)),
                            hbox(text("Tokens"), filler(), text(token_count_view)),
                            hbox(text("Elapsed"), filler(), text(elapsed_view)),
-                           hbox(text("Speed"), filler(), text(speed_view)),
+                           hbox(text("Score"), filler(), text(score_view)),
+                           separator(),
+                           text("Model") | bold,
+                           hbox(text("Loaded"), filler(), text(loaded_model_label)),
+                           hbox(text("Selected"), filler(), text(selected_model_label)),
+                           paragraph(model_status_view) | (busy_view ? color(Color::Yellow) : color(Color::White)),
+                           separator(),
+                           text("Machine") | bold,
+                           paragraph(profile_summary_view) | dim,
+                           separator(),
+                           paragraph(decision_ready_view ? decision_view.reason : "DetectLlama is choosing the best Falcon 7B GGUF for this machine.") | dim,
                        }) |
                        border;
 
-        auto model_panel = vbox({
-                               text("Models") | bold,
-                               text(profile_summary_view) | dim,
-                               separator(),
-                               vbox(std::move(model_rows)),
-                               separator(),
-                               paragraph(decision_ready_view ? decision_view.reason : "DetectLlama is choosing the best Falcon 7B GGUF for this machine."),
-                           }) |
-                           border | flex;
-
-        auto analysis_panel = vbox({
-                                  text("File path") | bold,
-                                  input->Render() | border,
-                                  paragraph(operation_status_view),
-                                  separator(),
-                                  text("Result") | bold,
-                                  paragraph(interpretation_view),
-                                  filler(),
-                                  buttons->Render(),
-                              }) |
-                              border | flex;
-
         auto body = hbox({
-                        model_panel | size(WIDTH, GREATER_THAN, 44),
+                        main_panel,
                         separator(),
-                        analysis_panel,
-                        separator(),
-                        metrics | size(WIDTH, GREATER_THAN, 30),
+                        sidebar | size(WIDTH, EQUAL, 38),
                     }) |
                     flex;
 
@@ -639,10 +965,91 @@ int run_tui(const AppConfig & config) {
                    status_line,
                    separator(),
                    body,
-                   separator(),
-                   text("Supported input: .md and .txt. Dragging a file into most terminals pastes its path.") | dim,
                }) |
                border | flex;
+    });
+
+    renderer |= CatchEvent([&](Event event) {
+        bool should_activate_model = false;
+        bool model_picker_active = false;
+        {
+            std::lock_guard<std::mutex> lock(state_mutex);
+            if (model_picker_open) {
+                model_picker_active = true;
+                if (event == Event::Escape) {
+                    model_picker_open = false;
+                    operation_status = "Model selector closed.";
+                    screen.PostEvent(Event::Custom);
+                    return true;
+                }
+                if (!decision.models.empty() &&
+                    (event == Event::ArrowDown || event == Event::Tab || event == Event::Character('j'))) {
+                    selected_model_index = (selected_model_index + 1) % static_cast<int>(decision.models.size());
+                    operation_status = "Selected " + decision.models[selected_model_index].info.quant + ".";
+                    screen.PostEvent(Event::Custom);
+                    return true;
+                }
+                if (!decision.models.empty() &&
+                    (event == Event::ArrowUp || event == Event::TabReverse || event == Event::Character('k'))) {
+                    selected_model_index = (selected_model_index + static_cast<int>(decision.models.size()) - 1) %
+                                           static_cast<int>(decision.models.size());
+                    operation_status = "Selected " + decision.models[selected_model_index].info.quant + ".";
+                    screen.PostEvent(Event::Custom);
+                    return true;
+                }
+                if (event == Event::Return) {
+                    should_activate_model = true;
+                }
+            }
+        }
+
+        if (should_activate_model) {
+            activate_selected_model();
+            return true;
+        }
+        if (model_picker_active && event != Event::Custom) {
+            return true;
+        }
+
+        std::string prompt_snapshot;
+        {
+            std::lock_guard<std::mutex> lock(state_mutex);
+            prompt_snapshot = prompt;
+        }
+        const auto matches = slash_command_matches(prompt_snapshot);
+        if (matches.empty()) {
+            return false;
+        }
+
+        if (event == Event::Escape) {
+            std::lock_guard<std::mutex> lock(state_mutex);
+            slash_menu_open = false;
+            operation_status = "Command menu closed.";
+            screen.PostEvent(Event::Custom);
+            return true;
+        }
+
+        if (event == Event::ArrowDown || event == Event::Tab || event == Event::Character('j')) {
+            std::lock_guard<std::mutex> lock(state_mutex);
+            slash_menu_index = (slash_menu_index + 1) % static_cast<int>(matches.size());
+            screen.PostEvent(Event::Custom);
+            return true;
+        }
+
+        if (event == Event::ArrowUp || event == Event::TabReverse || event == Event::Character('k')) {
+            std::lock_guard<std::mutex> lock(state_mutex);
+            slash_menu_index = (slash_menu_index + static_cast<int>(matches.size()) - 1) % static_cast<int>(matches.size());
+            screen.PostEvent(Event::Custom);
+            return true;
+        }
+
+        if (event == Event::Return) {
+            const int index = std::clamp(slash_menu_index, 0, static_cast<int>(matches.size()) - 1);
+            apply_slash_command(matches[index]);
+            return true;
+        }
+
+        return false;
     });
 
     ticker = std::thread([&] {
