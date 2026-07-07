@@ -247,8 +247,13 @@ int run_tui(const AppConfig & config) {
 
     auto refresh_model_cache_state = [&] {
         for (auto & model : decision.models) {
-            model.path = cached_model_path(config.model_repo, model.info.filename);
-            model.cached = !model.path.empty();
+            if (model.catalog_model) {
+                model.path = cached_model_path(config.model_repo, model.info.filename);
+                model.cached = !model.path.empty();
+            } else {
+                std::error_code error;
+                model.cached = !model.path.empty() && fs::exists(model.path, error);
+            }
         }
     };
 
@@ -363,9 +368,13 @@ int run_tui(const AppConfig & config) {
                 return;
             }
             model = *selected_model();
+            if (!model.downloadable) {
+                operation_status = "This llama.cpp cache model is local-only and cannot be downloaded by DetectLlama.";
+                return;
+            }
             model_busy = true;
             model_ready = false;
-            model_status = "Downloading " + model.info.quant + " with llama-cli -hf...";
+            model_status = "Downloading " + model.info.quant + " anonymously from Hugging Face...";
             operation_status = "Download is running. The terminal stays inside DetectLlama.";
             interpretation = "Waiting for download.";
         }
@@ -373,7 +382,7 @@ int run_tui(const AppConfig & config) {
         start_model_task([&, model] {
             std::string output_path;
             std::string error;
-            const bool ok = download_model_with_llama_cli(config, model.info, output_path, error);
+            const bool ok = download_public_model(config, model.info, output_path, error);
             ModelStatus downloaded = model;
             downloaded.path = output_path;
             downloaded.cached = ok;
@@ -383,7 +392,7 @@ int run_tui(const AppConfig & config) {
                 if (!ok) {
                     model_busy = false;
                     model_status = error;
-                    operation_status = "Download failed. Check llama-cli availability and network access.";
+                    operation_status = "Download failed. Check network access and that the model repo is public.";
                     interpretation = "No model is loaded.";
                 }
             }
@@ -496,11 +505,13 @@ int run_tui(const AppConfig & config) {
             if (model_to_load.cached) {
                 operation_status += " Loading from cache.";
                 should_load = true;
-            } else {
+            } else if (model_to_load.downloadable) {
                 model_status = "Selected model is not installed: " + model_to_load.info.quant;
-                operation_status += " Downloading with llama-cli.";
+                operation_status += " Downloading anonymously.";
                 interpretation = decision.reason;
                 should_download = true;
+            } else {
+                operation_status = "That llama.cpp cache model is no longer available on disk.";
             }
         }
 
@@ -529,10 +540,16 @@ int run_tui(const AppConfig & config) {
             refresh_model_cache_state();
             model = *selected_model();
             cached = model.cached;
+            if (!cached && !model.downloadable) {
+                model_picker_open = false;
+                slash_menu_open = false;
+                operation_status = "That llama.cpp cache model is no longer available on disk.";
+                return;
+            }
             model_picker_open = false;
             slash_menu_open = false;
             operation_status = cached ? "Loading " + model.info.quant + " from cache."
-                                      : "Downloading " + model.info.quant + " with llama-cli.";
+                                      : "Downloading " + model.info.quant + " anonymously.";
         }
 
         screen.PostEvent(Event::Custom);
@@ -779,6 +796,7 @@ int run_tui(const AppConfig & config) {
         bool          decision_ready_view;
         int           selected_model_index_view;
         std::string   loaded_model_quant_view;
+        std::string   loaded_model_path_view;
         std::string   model_status_view;
         std::string   operation_status_view;
         std::string   score_view;
@@ -802,6 +820,7 @@ int run_tui(const AppConfig & config) {
             decision_ready_view = decision_ready;
             selected_model_index_view = selected_model_index;
             loaded_model_quant_view = loaded_model_quant;
+            loaded_model_path_view = loaded_model_path;
             model_status_view = model_status;
             operation_status_view = operation_status;
             score_view = score_text;
@@ -831,17 +850,22 @@ int run_tui(const AppConfig & config) {
                 if (model.recommended) {
                     label += "  recommended";
                 }
-                if (model.info.quant == loaded_model_quant_view) {
+                if (!model.catalog_model) {
+                    label += "  local";
+                }
+                if (!loaded_model_path_view.empty() && model.path == loaded_model_path_view) {
                     label += "  loaded";
                 }
 
+                const std::string cache_status = model.catalog_model ? (model.cached ? "cached" : "missing")
+                                                                      : (model.cached ? "llama.cpp" : "missing");
                 auto row = hbox({
                     text(index == selected_model_index_view ? "> " : "  "),
                     text(label) | bold,
                     filler(),
                     text(std::to_string(model.info.size_mb) + " MiB"),
                     text("  "),
-                    text(model.cached ? "cached" : "missing"),
+                    text(cache_status),
                 });
                 if (model.recommended) {
                     row |= color(Color::Green);

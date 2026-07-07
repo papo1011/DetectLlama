@@ -39,11 +39,9 @@ else()
 
         set(LLAMA_BUILD_COMMON ON CACHE BOOL "" FORCE)
         set(LLAMA_BUILD_TESTS OFF CACHE BOOL "" FORCE)
-        set(LLAMA_BUILD_TOOLS ON CACHE BOOL "" FORCE)
+        set(LLAMA_BUILD_TOOLS OFF CACHE BOOL "" FORCE)
         set(LLAMA_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
-        # Upstream llama.cpp currently gates llama-cli under LLAMA_BUILD_SERVER.
-        # scripts/build.sh still builds only the llama-cli target, not llama-server.
-        set(LLAMA_BUILD_SERVER ON CACHE BOOL "" FORCE)
+        set(LLAMA_BUILD_SERVER OFF CACHE BOOL "" FORCE)
         set(LLAMA_BUILD_APP OFF CACHE BOOL "" FORCE)
         set(LLAMA_BUILD_UI OFF CACHE BOOL "" FORCE)
         set(LLAMA_USE_PREBUILT_UI OFF CACHE BOOL "" FORCE)
@@ -89,20 +87,6 @@ else()
         )
 
         FetchContent_MakeAvailable(llama_cpp)
-endif()
-
-if (NOT TARGET llama-cli)
-        find_program(DETECT_LLAMA_SYSTEM_LLAMA_CLI llama-cli)
-        if (DETECT_LLAMA_SYSTEM_LLAMA_CLI)
-                add_custom_target(llama-cli
-                        COMMAND ${CMAKE_COMMAND} -E echo "Using system llama-cli: ${DETECT_LLAMA_SYSTEM_LLAMA_CLI}"
-                )
-        else()
-                add_custom_target(llama-cli
-                        COMMAND ${CMAKE_COMMAND} -E false
-                        COMMENT "llama-cli target is unavailable; install llama.cpp tools or use the bundled fallback"
-                )
-        endif()
 endif()
 
 add_executable(DetectLlama src/main.cpp

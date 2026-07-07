@@ -4,7 +4,7 @@ set -euo pipefail
 BUILD_DIR="build"
 GPU_BACKEND="auto"
 JOBS="$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 6)"
-TARGETS=("DetectLlama" "llama-cli")
+TARGETS=("DetectLlama")
 # macOS still ships Bash 3.2, whose read -t builtin rejects fractional
 # timeouts such as 0.2. Keep these integer-only for portability.
 READ_POLL_TIMEOUT=1

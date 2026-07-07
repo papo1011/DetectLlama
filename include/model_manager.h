@@ -13,6 +13,8 @@ struct ModelStatus {
     std::string path;
     bool        recommended = false;
     bool        fits = false;
+    bool        downloadable = true;
+    bool        catalog_model = true;
 };
 
 struct ModelDecision {
@@ -24,7 +26,6 @@ struct ModelDecision {
 };
 
 std::string   hf_cache_dir();
-std::string   find_llama_cli(const AppConfig & config);
 ModelDecision build_model_decision(const AppConfig & config);
-bool          download_model_with_llama_cli(const AppConfig & config, const ModelInfo & model, std::string & output_path, std::string & error);
+bool          download_public_model(const AppConfig & config, const ModelInfo & model, std::string & output_path, std::string & error);
 std::string   cached_model_path(const std::string & repo, const std::string & filename);

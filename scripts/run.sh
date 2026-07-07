@@ -14,8 +14,9 @@ usage() {
     cat <<EOF
 Usage: $0
 
-Model selection is automatic. If the selected GGUF is not already cached,
-the TUI lets you download it with llama-cli -hf.
+Model selection is automatic. If the selected GGUF is not already in the
+llama.cpp cache, the TUI downloads it anonymously from the public Hugging Face
+resolve URL.
 EOF
 }
 
@@ -59,7 +60,7 @@ if [ "$USE_GPU_LC" = "1" ] || [ "$USE_GPU_LC" = "true" ] || { [ "$USE_GPU_LC" = 
     GPU_ARGS=(--gpu)
 fi
 
-CMD=("$EXECUTABLE" --build-dir "$BUILD_DIR" --model-repo "${MODEL_REPO:-maddes8cht/tiiuae-falcon-7b-instruct-gguf}" --target-tps "${TARGET_TOKENS_PER_SEC:-30}" -c "$N_CTX" -b "$N_BATCH" "${GPU_ARGS[@]}")
+CMD=("$EXECUTABLE" --model-repo "${MODEL_REPO:-maddes8cht/tiiuae-falcon-7b-instruct-gguf}" --target-tps "${TARGET_TOKENS_PER_SEC:-30}" -c "$N_CTX" -b "$N_BATCH" "${GPU_ARGS[@]}")
 
 if [ "$DETECT_LLAMA_DRY_RUN" = "1" ]; then
     printf "Dry run command:"
