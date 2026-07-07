@@ -5,6 +5,10 @@ BUILD_DIR="build"
 GPU_BACKEND="auto"
 JOBS="$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 6)"
 TARGETS=("DetectLlama" "llama-cli")
+# macOS still ships Bash 3.2, whose read -t builtin rejects fractional
+# timeouts such as 0.2. Keep these integer-only for portability.
+READ_POLL_TIMEOUT=1
+READ_DRAIN_TIMEOUT=1
 
 usage() {
     cat <<EOF
@@ -53,7 +57,7 @@ run_with_idle_spinner() {
     last_output="$(date +%s)"
 
     while kill -0 "$cmd_pid" 2>/dev/null; do
-        if IFS= read -r -t 0.2 line <&3; then
+        if IFS= read -r -t "$READ_POLL_TIMEOUT" line <&3; then
             if [ "$spinner_visible" -eq 1 ]; then
                 printf "\r\033[K"
                 spinner_visible=0
@@ -70,7 +74,7 @@ run_with_idle_spinner() {
         fi
     done
 
-    while IFS= read -r -t 0.1 line <&3; do
+    while IFS= read -r -t "$READ_DRAIN_TIMEOUT" line <&3; do
         if [ "$spinner_visible" -eq 1 ]; then
             printf "\r\033[K"
             spinner_visible=0
