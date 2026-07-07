@@ -56,10 +56,23 @@ long long linux_mem_mb(const std::string & key) {
 
 long long mac_total_mem_mb() {
     const std::string bytes = command_output("sysctl -n hw.memsize 2>/dev/null");
-    if (bytes.empty()) {
-        return 0;
+    if (!bytes.empty()) {
+        return std::stoll(bytes) / 1024 / 1024;
     }
-    return std::stoll(bytes) / 1024 / 1024;
+
+    const std::string hostinfo_mb = command_output(
+        "hostinfo 2>/dev/null | awk '/Primary memory available:/ { value=$4; unit=$5; if (unit ~ /gigabytes/) printf \"%d\", value * 1024; else if (unit ~ /megabytes/) printf \"%d\", value; }'");
+    if (!hostinfo_mb.empty()) {
+        return std::stoll(hostinfo_mb);
+    }
+
+    const std::string profiler_mb = command_output(
+        "system_profiler SPHardwareDataType 2>/dev/null | awk -F': ' '/Memory:/ { split($2, parts, \" \"); if (parts[2] == \"GB\") printf \"%d\", parts[1] * 1024; else if (parts[2] == \"MB\") printf \"%d\", parts[1]; exit }'");
+    if (!profiler_mb.empty()) {
+        return std::stoll(profiler_mb);
+    }
+
+    return 0;
 }
 
 long long mac_available_mem_mb() {
@@ -148,9 +161,10 @@ HardwareProfile detect_hardware_profile(const std::string & cache_dir) {
     profile.arch_name = uname_value("-m");
     profile.cpu_cores = static_cast<int>(std::max(1u, std::thread::hardware_concurrency()));
 
-    std::filesystem::create_directories(cache_dir);
-    const auto space = std::filesystem::space(cache_dir);
-    profile.disk_free_mb = static_cast<long long>(space.available / 1024 / 1024);
+    std::error_code fs_error;
+    std::filesystem::create_directories(cache_dir, fs_error);
+    const auto space = std::filesystem::space(cache_dir, fs_error);
+    profile.disk_free_mb = fs_error ? 0 : static_cast<long long>(space.available / 1024 / 1024);
 
     if (profile.os_name == "Darwin") {
         profile.total_ram_mb = mac_total_mem_mb();
@@ -177,7 +191,7 @@ HardwareProfile detect_hardware_profile(const std::string & cache_dir) {
     }
 
     profile.memory_pool_mb = ram_soft_pool_mb;
-    if (profile.accelerator == "nvidia" || profile.accelerator == "apple-unified") {
+    if (profile.accelerator == "nvidia") {
         profile.memory_pool_mb = profile.gpu_free_mb;
     }
 
