@@ -16,8 +16,10 @@ then paste text directly or analyze a local `.txt`/`.md` file.
 - **Local by default**: input files stay on your machine.
 - **Hardware-aware setup**: DetectLlama profiles RAM, disk, CPU, NVIDIA VRAM, or Apple unified memory.
 - **Automatic model recommendation**: the TUI highlights the Falcon 7B quantization that best fits the detected device.
-- **One-screen workflow**: model selection, download, loading, and analysis happen inside the terminal UI.
-- **No manual GGUF hunting**: missing models can be installed from the TUI through `llama-cli -hf`.
+- **One-screen workflow**: model selection, llama.cpp cache discovery, download, loading, and analysis happen inside the
+  terminal UI.
+- **Anonymous public downloads**: missing public GGUF models are downloaded directly from Hugging Face without passing
+  tokens.
 
 ## Quick Start
 
@@ -39,8 +41,8 @@ Run the TUI:
 ./scripts/run.sh
 ```
 
-DetectLlama opens immediately in fullscreen mode. If the recommended model is already cached, it loads it. If not, type
-`/models`, choose a quantization, and press Enter to download and load it.
+DetectLlama opens immediately in fullscreen mode. If the recommended model is already cached in the llama.cpp cache, it
+loads it. If not, type `/models`, choose a quantization, and press Enter to download and load it.
 
 After the model is ready, use the prompt field:
 
@@ -56,7 +58,8 @@ and `file://` URIs.
 
 - the recommended quantization for your device
 - all available Falcon 7B GGUF variants
-- whether each model is already cached or missing
+- extra local `.gguf` files already present in the llama.cpp cache
+- whether each catalog model is already cached or missing
 - model selection and download through `/models`
 - analysis status while inference is running
 - AI probability estimate, discrepancy score, token count, elapsed time, and tokens/sec in the right sidebar
@@ -65,7 +68,7 @@ and `file://` URIs.
 
 DetectLlama targets about `30 tokens/sec` by default. The selector uses a conservative memory budget and checks:
 
-- available disk space in the llama.cpp/Hugging Face cache
+- available disk space in the llama.cpp model cache
 - total and available system RAM
 - NVIDIA VRAM when `nvidia-smi` is available
 - Apple Silicon unified memory on macOS
@@ -85,11 +88,15 @@ Optional advanced commands:
 ```bash
 ./scripts/build.sh --gpu cuda --jobs 8
 ./scripts/build.sh --gpu cpu
-./scripts/download-model.sh --dry-run
-./scripts/download-model.sh --print-path
 ```
 
-If you switch to a private or gated Hugging Face model, export `HF_TOKEN` before downloading.
+DetectLlama uses the same model cache convention as llama.cpp. By default this is `~/Library/Caches/llama.cpp` on macOS,
+`$XDG_CACHE_HOME/llama.cpp` on Linux when set, or `~/.cache/llama.cpp` otherwise. Set `LLAMA_CACHE=/path/to/cache` to
+override it. Downloaded catalog models are written there, and the TUI lists any complete `.gguf` already found in that
+cache.
+
+DetectLlama intentionally does not use Hugging Face tokens. Model downloads are anonymous and only support public,
+ungated Hugging Face repos.
 
 ## Understanding The Score
 
@@ -128,4 +135,4 @@ a GGUF model.
 - [Fast-DetectGPT](https://arxiv.org/abs/2310.05130) for the analytic detection method.
 - [Original Fast-DetectGPT implementation](https://github.com/baoguangsheng/fast-detect-gpt), which uses PyTorch.
 - [DetectGPT](https://arxiv.org/abs/2301.11305) for the earlier probability-curvature detection framing.
-- [llama.cpp](https://github.com/ggml-org/llama.cpp) for local GGUF inference and `llama-cli`.
+- [llama.cpp](https://github.com/ggml-org/llama.cpp) for local GGUF inference.
