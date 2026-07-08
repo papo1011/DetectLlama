@@ -412,6 +412,7 @@ bool BackendSession::load_model_status_unlocked(const ModelStatus & model) {
         snapshot_.model_ready = false;
         snapshot_.loaded_model_quant.clear();
         snapshot_.loaded_model_path.clear();
+        loaded_model_info_ = {};
         snapshot_.model_status = "Loading " + model_label(model.info) + " from local storage...";
         snapshot_.operation_status = "Model loading is running in the background.";
         snapshot_.interpretation = "Waiting for model.";
@@ -428,6 +429,7 @@ bool BackendSession::load_model_status_unlocked(const ModelStatus & model) {
             snapshot_.model_ready = true;
             snapshot_.loaded_model_quant = model_label(model.info);
             snapshot_.loaded_model_path = model.path;
+            loaded_model_info_ = model.info;
             snapshot_.model_status = "Model ready: " + model_label(model.info);
             snapshot_.operation_status = "Type / for commands, /path <file>, or paste text directly into the prompt.";
             snapshot_.interpretation = "Ready to analyze files or pasted text.";
@@ -436,10 +438,6 @@ bool BackendSession::load_model_status_unlocked(const ModelStatus & model) {
             snapshot_.operation_status = "Choose another cached model or download the recommended one.";
             snapshot_.interpretation = "No model is loaded.";
         }
-    }
-    if (ok) {
-        std::string save_error;
-        save_last_used_model(model.info, model.path, save_error);
     }
     return ok;
 }
@@ -644,6 +642,8 @@ AnalysisResult BackendSession::analyze_text(const std::string & text) {
     std::lock_guard<std::mutex> operation_lock(operation_mutex_);
     AnalysisResult             result;
     LlamaStatePtr              llama;
+    ModelInfo                  loaded_model_info;
+    std::string                loaded_model_path;
     {
         std::lock_guard<std::mutex> state_lock(state_mutex_);
         if (!snapshot_.model_ready || !llama_) {
@@ -660,12 +660,18 @@ AnalysisResult BackendSession::analyze_text(const std::string & text) {
         snapshot_.elapsed = "-";
         snapshot_.speed = "measuring...";
         llama = llama_;
+        loaded_model_info = loaded_model_info_;
+        loaded_model_path = snapshot_.loaded_model_path;
     }
 
     result = analyze_text_detailed(*llama, text, config_.n_ctx);
     {
         std::lock_guard<std::mutex> state_lock(state_mutex_);
         apply_analysis_result_locked(result, "Pasted text");
+    }
+    if (result.ok && !loaded_model_path.empty()) {
+        std::string save_error;
+        save_last_used_model(loaded_model_info, loaded_model_path, save_error);
     }
     return result;
 }
@@ -678,6 +684,8 @@ AnalysisResult BackendSession::analyze_file(const std::string & path) {
     AnalysisResult    result;
     LlamaStatePtr     llama;
     std::string       input_text;
+    ModelInfo         loaded_model_info;
+    std::string       loaded_model_path;
     {
         std::lock_guard<std::mutex> state_lock(state_mutex_);
         if (!snapshot_.model_ready || !llama_) {
@@ -694,6 +702,8 @@ AnalysisResult BackendSession::analyze_file(const std::string & path) {
         snapshot_.elapsed = "-";
         snapshot_.speed = "measuring...";
         llama = llama_;
+        loaded_model_info = loaded_model_info_;
+        loaded_model_path = snapshot_.loaded_model_path;
     }
 
     std::error_code path_error;
@@ -710,6 +720,10 @@ AnalysisResult BackendSession::analyze_file(const std::string & path) {
     {
         std::lock_guard<std::mutex> state_lock(state_mutex_);
         apply_analysis_result_locked(result, source_label);
+    }
+    if (result.ok && !loaded_model_path.empty()) {
+        std::string save_error;
+        save_last_used_model(loaded_model_info, loaded_model_path, save_error);
     }
     return result;
 }

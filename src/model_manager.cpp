@@ -763,7 +763,7 @@ bool save_last_used_model(const ModelInfo & model, const std::string & path, std
            << "    \"quant\": \"" << json_escape(model.quant) << "\",\n"
            << "    \"repo\": \"" << json_escape(model.repo) << "\",\n"
            << "    \"filename\": \"" << json_escape(model.filename) << "\",\n"
-           << "    \"last_loaded_at\": " << static_cast<long long>(std::time(nullptr)) << "\n"
+           << "    \"last_successful_analysis_at\": " << static_cast<long long>(std::time(nullptr)) << "\n"
            << "  }\n"
            << "}\n";
 

@@ -122,5 +122,6 @@ private:
 
     BackendSnapshot snapshot_;
     LlamaStatePtr    llama_;
+    ModelInfo        loaded_model_info_;
     bool             backend_initialized_ = false;
 };
