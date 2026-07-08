@@ -123,3 +123,9 @@ add_executable(DetectLlama
 )
 
 target_link_libraries(DetectLlama PRIVATE detectllama_core argparse::argparse ftxui::screen ftxui::dom ftxui::component)
+
+add_executable(DetectLlamaBackend
+        src/backend_cli.cpp
+)
+
+target_link_libraries(DetectLlamaBackend PRIVATE detectllama_core argparse::argparse)
