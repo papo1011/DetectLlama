@@ -1,7 +1,7 @@
 # DetectLlama
 
 DetectLlama is a local TUI application for checking whether a text looks human-written or AI-generated.
-It uses [llama.cpp](https://github.com/ggml-org/llama.cpp) and a Falcon 7B GGUF model, so the full workflow can run on
+It uses [llama.cpp](https://github.com/ggml-org/llama.cpp) with Llama 3 8B GGUF models, so the full workflow can run on
 your own device without sending the text to an external API.
 
 The goal is simple: open DetectLlama, let it choose the best model quantization for your machine, download it if needed,
@@ -15,7 +15,7 @@ then paste text directly or analyze a local `.txt`/`.md` file.
 
 - **Local by default**: input files stay on your machine.
 - **Hardware-aware setup**: DetectLlama profiles RAM, disk, CPU, NVIDIA VRAM, or Apple unified memory.
-- **Automatic model recommendation**: the TUI highlights the Falcon 7B quantization that best fits the detected device.
+- **Automatic model recommendation**: the TUI highlights the Llama 3 8B model and quantization that best fits the detected device.
 - **One-screen workflow**: model selection, llama.cpp cache discovery, download, loading, and analysis happen inside the
   terminal UI.
 - **Anonymous public downloads**: missing public GGUF models are downloaded directly from Hugging Face without passing
@@ -70,7 +70,7 @@ model picker.
 ## What The TUI Shows
 
 - the recommended quantization for your device
-- all available Falcon 7B GGUF variants
+- all available Llama 3 8B and Llama 3 8B Instruct GGUF variants
 - extra local `.gguf` files already present in the llama.cpp cache
 - whether each catalog model is already cached or missing
 - model selection and download through `/models`
@@ -79,16 +79,33 @@ model picker.
 
 ## Model Selection
 
-DetectLlama targets about `30 tokens/sec` by default. The selector uses a conservative memory budget and checks:
+DetectLlama targets about `30 tokens/sec` by default, but the selector now prefers local models first. It checks:
 
 - available disk space in the llama.cpp model cache
 - total and available system RAM
 - NVIDIA VRAM when `nvidia-smi` is available
 - Apple Silicon unified memory on macOS
 - CPU core count and OS/architecture
+- local GGUF files in the llama.cpp cache, Hugging Face snapshots, and `DETECT_LLAMA_MODEL_DIRS`
 
 If only CPU is usable, DetectLlama falls back to the smallest practical quantization and warns that 30 tokens/sec may be
 unlikely.
+
+The built-in catalog includes both `Llama 3 8B` and `Llama 3 8B Instruct`, but only keeps 4-bit and larger GGUF
+variants: base `Q4_*` through `FP16`, and the bartowski Instruct set from `IQ4_*`/`Q4_*` through `FP32`. On Apple
+Silicon, the recommendation is intentionally more aggressive: 8 GB machines can prefer `Q5_K_M` when it fits, 16 GB
+machines can prefer `Q8_0`, and Max/Ultra machines can prefer `FP16`. `FP32` is listed for manual selection but is not
+selected automatically.
+
+Startup selection is local-first:
+
+- the previously loaded model wins if it still exists, is Llama 3 8B, is GGUF, and is 4-bit or larger
+- otherwise DetectLlama picks the best compatible local Llama 3 8B GGUF
+- otherwise it selects the best downloadable catalog model, but waits for the user to confirm the download
+
+The previous model is stored in `~/.config/detectllama/config.json` on every platform. Set
+`DETECT_LLAMA_MODEL_DIRS=/path/to/models:/another/path` to add extra recursive search roots. Set
+`DETECT_LLAMA_CONFIG=/path/to/config.json` only when you need a custom config file for testing or scripting.
 
 You can inspect the launch command without opening the app:
 
@@ -105,8 +122,8 @@ Optional advanced commands:
 
 DetectLlama uses the same model cache convention as llama.cpp. By default this is `~/Library/Caches/llama.cpp` on macOS,
 `$XDG_CACHE_HOME/llama.cpp` on Linux when set, or `~/.cache/llama.cpp` otherwise. Set `LLAMA_CACHE=/path/to/cache` to
-override it. Downloaded catalog models are written there, and the TUI lists any complete `.gguf` already found in that
-cache.
+override the primary download cache. Discovery still checks both `LLAMA_CACHE` and the default llama.cpp cache, plus
+Hugging Face snapshots and any directory listed in `DETECT_LLAMA_MODEL_DIRS`.
 
 DetectLlama intentionally does not use Hugging Face tokens. Model downloads are anonymous and only support public,
 ungated Hugging Face repos.
