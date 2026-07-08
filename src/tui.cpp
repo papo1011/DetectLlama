@@ -265,19 +265,21 @@ int run_tui(const AppConfig & config) {
         } else {
             for (int index = 0; index < static_cast<int>(snapshot.decision.models.size()); ++index) {
                 const auto & model = snapshot.decision.models[index];
-                std::string label = model.info.quant;
+                std::string label = model_label(model.info);
                 if (model.recommended) {
                     label += "  recommended";
                 }
-                if (!model.catalog_model) {
+                if (model.last_used) {
+                    label += "  last used";
+                }
+                if (model.cached) {
                     label += "  local";
                 }
                 if (!snapshot.loaded_model_path.empty() && model.path == snapshot.loaded_model_path) {
                     label += "  loaded";
                 }
 
-                const std::string cache_status = model.catalog_model ? (model.cached ? "cached" : "missing")
-                                                                      : (model.cached ? "llama.cpp" : "missing");
+                const std::string cache_status = model.cached ? "local" : (model.downloadable ? "downloadable" : "missing");
                 auto row = hbox({
                     text(index == snapshot.selected_model_index ? "> " : "  "),
                     text(label) | bold,
@@ -309,7 +311,7 @@ int run_tui(const AppConfig & config) {
         std::string selected_model_label = "-";
         if (snapshot.decision_ready && !snapshot.decision.models.empty()) {
             const int index = std::clamp(snapshot.selected_model_index, 0, static_cast<int>(snapshot.decision.models.size()) - 1);
-            selected_model_label = snapshot.decision.models[index].info.quant;
+            selected_model_label = model_label(snapshot.decision.models[index].info);
         }
         const std::string loaded_model_label = snapshot.loaded_model_quant.empty() ? "-" : snapshot.loaded_model_quant;
 
@@ -393,7 +395,7 @@ int run_tui(const AppConfig & config) {
                            paragraph(snapshot.profile_summary) | dim,
                            separator(),
                            paragraph(snapshot.decision_ready ? snapshot.decision.reason
-                                                             : "DetectLlama is choosing the best Falcon 7B GGUF for this machine.") |
+                                                             : "DetectLlama is choosing the best Llama 3 8B GGUF for this machine.") |
                                dim,
                        }) |
                        border;
