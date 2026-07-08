@@ -333,7 +333,7 @@ void BackendSession::initialize() {
             model_to_load = recommended;
             should_load = true;
         } else {
-            snapshot_.model_status = "Recommended model is not installed: " + recommended.info.quant;
+            snapshot_.model_status = "Recommended model is not installed: " + model_label(recommended.info);
             snapshot_.operation_status = "Use /models to select and download a quantization.";
             snapshot_.interpretation = snapshot_.decision.reason;
         }
@@ -349,7 +349,7 @@ void BackendSession::refresh_model_cache_state_locked() {
 
     for (auto & model : snapshot_.decision.models) {
         if (model.catalog_model) {
-            model.path = cached_model_path(config_.model_repo, model.info.filename);
+            model.path = cached_model_path(model.info.repo, model.info.filename);
             model.cached = !model.path.empty();
         } else {
             std::error_code error;
@@ -383,7 +383,7 @@ bool BackendSession::select_model_index(const int index) {
         return false;
     }
     snapshot_.selected_model_index = index;
-    snapshot_.operation_status = "Selected " + snapshot_.decision.models[snapshot_.selected_model_index].info.quant + ".";
+    snapshot_.operation_status = "Selected " + model_label(snapshot_.decision.models[snapshot_.selected_model_index].info) + ".";
     return true;
 }
 
@@ -394,7 +394,7 @@ void BackendSession::select_previous_model() {
     }
     snapshot_.selected_model_index = (snapshot_.selected_model_index + static_cast<int>(snapshot_.decision.models.size()) - 1) %
                                      static_cast<int>(snapshot_.decision.models.size());
-    snapshot_.operation_status = "Selected " + snapshot_.decision.models[snapshot_.selected_model_index].info.quant + ".";
+    snapshot_.operation_status = "Selected " + model_label(snapshot_.decision.models[snapshot_.selected_model_index].info) + ".";
 }
 
 void BackendSession::select_next_model() {
@@ -403,7 +403,7 @@ void BackendSession::select_next_model() {
         return;
     }
     snapshot_.selected_model_index = (snapshot_.selected_model_index + 1) % static_cast<int>(snapshot_.decision.models.size());
-    snapshot_.operation_status = "Selected " + snapshot_.decision.models[snapshot_.selected_model_index].info.quant + ".";
+    snapshot_.operation_status = "Selected " + model_label(snapshot_.decision.models[snapshot_.selected_model_index].info) + ".";
 }
 
 bool BackendSession::load_model_status_unlocked(const ModelStatus & model) {
@@ -412,7 +412,7 @@ bool BackendSession::load_model_status_unlocked(const ModelStatus & model) {
         snapshot_.model_ready = false;
         snapshot_.loaded_model_quant.clear();
         snapshot_.loaded_model_path.clear();
-        snapshot_.model_status = "Loading " + model.info.quant + " from local cache...";
+        snapshot_.model_status = "Loading " + model_label(model.info) + " from local storage...";
         snapshot_.operation_status = "Model loading is running in the background.";
         snapshot_.interpretation = "Waiting for model.";
     }
@@ -426,9 +426,9 @@ bool BackendSession::load_model_status_unlocked(const ModelStatus & model) {
         if (ok) {
             llama_ = next;
             snapshot_.model_ready = true;
-            snapshot_.loaded_model_quant = model.info.quant;
+            snapshot_.loaded_model_quant = model_label(model.info);
             snapshot_.loaded_model_path = model.path;
-            snapshot_.model_status = "Model ready: " + model.info.quant;
+            snapshot_.model_status = "Model ready: " + model_label(model.info);
             snapshot_.operation_status = "Type / for commands, /path <file>, or paste text directly into the prompt.";
             snapshot_.interpretation = "Ready to analyze files or pasted text.";
         } else {
@@ -436,6 +436,10 @@ bool BackendSession::load_model_status_unlocked(const ModelStatus & model) {
             snapshot_.operation_status = "Choose another cached model or download the recommended one.";
             snapshot_.interpretation = "No model is loaded.";
         }
+    }
+    if (ok) {
+        std::string save_error;
+        save_last_used_model(model.info, model.path, save_error);
     }
     return ok;
 }
@@ -474,14 +478,14 @@ bool BackendSession::download_selected_model_unlocked() {
             return false;
         }
         snapshot_.model_ready = false;
-        snapshot_.model_status = "Downloading " + model.info.quant + " anonymously from Hugging Face...";
+        snapshot_.model_status = "Downloading " + model_label(model.info) + " anonymously from Hugging Face...";
         snapshot_.operation_status = "Download is running. The terminal stays inside DetectLlama.";
         snapshot_.interpretation = "Waiting for download.";
     }
 
     std::string output_path;
     std::string error;
-    const bool  ok = download_public_model(config_, model.info, output_path, error);
+    const bool  ok = download_public_model(model.info, output_path, error);
     ModelStatus downloaded = model;
     downloaded.path = output_path;
     downloaded.cached = ok;
@@ -518,8 +522,8 @@ bool BackendSession::activate_selected_model() {
             snapshot_.operation_status = "That llama.cpp cache model is no longer available on disk.";
             return false;
         }
-        snapshot_.operation_status = cached ? "Loading " + model.info.quant + " from cache."
-                                            : "Downloading " + model.info.quant + " anonymously.";
+        snapshot_.operation_status = cached ? "Loading " + model_label(model.info) + " from cache."
+                                            : "Downloading " + model_label(model.info) + " anonymously.";
     }
 
     if (cached) {
@@ -544,7 +548,10 @@ bool BackendSession::load_model_by_query(const std::string & query, const bool d
         const std::string needle = lower_copy(query);
         for (int index = 0; index < static_cast<int>(snapshot_.decision.models.size()); ++index) {
             const auto & candidate = snapshot_.decision.models[index];
-            if (lower_copy(candidate.info.quant).find(needle) != std::string::npos ||
+            if (lower_copy(model_label(candidate.info)).find(needle) != std::string::npos ||
+                lower_copy(candidate.info.family).find(needle) != std::string::npos ||
+                lower_copy(candidate.info.quant).find(needle) != std::string::npos ||
+                lower_copy(candidate.info.repo).find(needle) != std::string::npos ||
                 lower_copy(candidate.info.filename).find(needle) != std::string::npos ||
                 std::to_string(candidate.info.rank) == needle) {
                 next_index = index;
@@ -558,11 +565,11 @@ bool BackendSession::load_model_by_query(const std::string & query, const bool d
 
         snapshot_.selected_model_index = next_index;
         model = snapshot_.decision.models[snapshot_.selected_model_index];
-        snapshot_.operation_status = "Selected " + model.info.quant + ".";
+        snapshot_.operation_status = "Selected " + model_label(model.info) + ".";
         if (model.cached) {
             snapshot_.operation_status += " Loading from cache.";
         } else if (model.downloadable && download_if_missing) {
-            snapshot_.model_status = "Selected model is not installed: " + model.info.quant;
+            snapshot_.model_status = "Selected model is not installed: " + model_label(model.info);
             snapshot_.operation_status += " Downloading anonymously.";
             snapshot_.interpretation = snapshot_.decision.reason;
             should_download = true;
@@ -595,8 +602,16 @@ bool BackendSession::load_model_path(const std::string & path, const std::string
     }
 
     ModelStatus model;
-    model.info.quant = label.empty() ? fs::path(path).stem().string() : label;
-    model.info.filename = fs::path(path).filename().string();
+    if (!describe_local_model_path(path, model.info)) {
+        std::lock_guard<std::mutex> state_lock(state_mutex_);
+        snapshot_.model_status = "Failed to load model: " + path;
+        snapshot_.operation_status = "Model path must be a recognizable Llama 3 8B GGUF with 4-bit quantization or higher.";
+        snapshot_.interpretation = "No model is loaded.";
+        return false;
+    }
+    if (!label.empty()) {
+        model.info.quant = label;
+    }
     model.path = path;
     model.cached = true;
     model.downloadable = false;

@@ -1,9 +1,6 @@
 #pragma once
 
-#include <string>
-
 struct AppConfig {
-    std::string model_repo = "maddes8cht/tiiuae-falcon-7b-instruct-gguf";
     int         n_ctx = 2048;
     int         n_batch = 2048;
     int         target_tokens_per_sec = 30;
