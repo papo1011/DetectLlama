@@ -24,3 +24,15 @@ bool setup_llama(LlamaState & llama, const std::string & model_path, bool gpu, i
     llama.ctx = llama_init_from_model(llama.model, cparams);
     return (llama.ctx != nullptr);
 }
+
+void free_llama_state(LlamaState & llama) {
+    if (llama.ctx) {
+        llama_free(llama.ctx);
+        llama.ctx = nullptr;
+    }
+    if (llama.model) {
+        llama_model_free(llama.model);
+        llama.model = nullptr;
+    }
+    llama.vocab = nullptr;
+}

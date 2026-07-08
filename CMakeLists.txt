@@ -89,7 +89,8 @@ else()
         FetchContent_MakeAvailable(llama_cpp)
 endif()
 
-add_executable(DetectLlama src/main.cpp
+add_library(detectllama_core
+        src/backend.cpp
         src/console.cpp
         src/detect.cpp
         src/hardware_profile.cpp
@@ -98,9 +99,8 @@ add_executable(DetectLlama src/main.cpp
         src/llama_state.cpp
         src/model_catalog.cpp
         src/model_manager.cpp
-        src/signals.cpp
-        src/tui.cpp
         include/app_config.h
+        include/backend.h
         include/console.h
         include/detect.h
         include/hardware_profile.h
@@ -109,8 +109,17 @@ add_executable(DetectLlama src/main.cpp
         include/llama_state.h
         include/model_catalog.h
         include/model_manager.h
+)
+
+target_link_libraries(detectllama_core PUBLIC llama)
+target_include_directories(detectllama_core PUBLIC include)
+
+add_executable(DetectLlama
+        src/main.cpp
+        src/signals.cpp
+        src/tui.cpp
         include/signals.h
         include/tui.h
 )
 
-target_link_libraries(DetectLlama PRIVATE llama argparse::argparse ftxui::screen ftxui::dom ftxui::component)
+target_link_libraries(DetectLlama PRIVATE detectllama_core argparse::argparse ftxui::screen ftxui::dom ftxui::component)

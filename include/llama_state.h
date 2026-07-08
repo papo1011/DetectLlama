@@ -11,3 +11,4 @@ struct LlamaState {
 };
 
 bool setup_llama(LlamaState & llama, const std::string & model_path, bool gpu, int n_ctx, int n_batch);
+void free_llama_state(LlamaState & llama);
