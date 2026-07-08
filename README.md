@@ -93,8 +93,8 @@ unlikely.
 
 The built-in catalog includes both `Llama 3 8B` and `Llama 3 8B Instruct`, but only keeps 4-bit and larger GGUF
 variants: base `Q4_*` through `FP16`, and the bartowski Instruct set from `IQ4_*`/`Q4_*` through `FP32`. On Apple
-Silicon, the recommendation is intentionally more aggressive: 8 GB machines can prefer `Q5_K_M` when it fits, 16 GB
-machines can prefer `Q8_0`, and Max/Ultra machines can prefer `FP16`. `FP32` is listed for manual selection but is not
+Silicon, the recommendation is intentionally more aggressive but keeps extra memory headroom: 8 GB machines prefer `Q4_*`,
+16 GB machines can prefer `Q8_0`, and Max/Ultra machines can prefer `FP16`. `FP32` is listed for manual selection but is not
 selected automatically.
 
 Startup selection is local-first:
@@ -103,7 +103,8 @@ Startup selection is local-first:
 - otherwise DetectLlama picks the best compatible local Llama 3 8B GGUF
 - otherwise it selects the best downloadable catalog model, but waits for the user to confirm the download
 
-The previous model is stored in `~/.config/detectllama/config.json` on every platform. Set
+The previous model is stored in `~/.config/detectllama/config.json` on every platform, but only after an analysis
+completes successfully. Set
 `DETECT_LLAMA_MODEL_DIRS=/path/to/models:/another/path` to add extra recursive search roots. Set
 `DETECT_LLAMA_CONFIG=/path/to/config.json` only when you need a custom config file for testing or scripting.
 
