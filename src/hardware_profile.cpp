@@ -192,7 +192,8 @@ HardwareProfile detect_hardware_profile(const std::string & cache_dir) {
 
     profile.memory_pool_mb = ram_soft_pool_mb;
     if (profile.accelerator == "apple-unified") {
-        profile.memory_pool_mb = profile.total_ram_mb * 90 / 100;
+        profile.memory_pool_mb = profile.total_ram_mb <= 12000 ? profile.total_ram_mb * 75 / 100
+                                                               : profile.total_ram_mb * 90 / 100;
     } else if (profile.accelerator == "nvidia") {
         profile.memory_pool_mb = profile.gpu_free_mb;
     }

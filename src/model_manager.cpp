@@ -412,7 +412,7 @@ int preferred_rank_for_hardware(const HardwareProfile & hardware) {
             return 15;
         }
         if (hardware.total_ram_mb >= 7000) {
-            return 13;
+            return 11;
         }
         return 10;
     }
