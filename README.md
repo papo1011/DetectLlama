@@ -54,6 +54,19 @@ After the model is ready, use the prompt field:
 Most terminals implement drag and drop by pasting the file path; DetectLlama still normalizes quoted paths, escaped spaces,
 and `file://` URIs.
 
+## Headless Backend
+
+The build also produces `build/DetectLlamaBackend`, a non-interactive entry point that uses the same backend as the TUI
+without linking or opening FTXUI. It is intended for automation and future end-to-end backend tests.
+
+```bash
+build/DetectLlamaBackend --model-path /path/to/model.gguf --text "Text to analyze" --json
+build/DetectLlamaBackend --model-path /path/to/model.gguf --file ./sample.txt --json
+```
+
+Headless analysis requires an explicit local `--model-path`, so automated runs do not depend on downloads or the TUI
+model picker.
+
 ## What The TUI Shows
 
 - the recommended quantization for your device
