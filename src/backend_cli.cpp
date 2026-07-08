@@ -1,6 +1,7 @@
 #include "../include/app_config.h"
 #include "../include/backend.h"
 #include "../include/llama_logging.h"
+#include "../include/signals.h"
 
 #include <argparse/argparse.hpp>
 #include <array>
@@ -115,6 +116,7 @@ void print_human_result(const BackendSnapshot & snapshot, const AnalysisResult &
 
 int main(const int argc, char * argv[]) {
     clear_hf_token_environment();
+    install_signal_handlers();
 
     argparse::ArgumentParser program("DetectLlamaBackend", "0.1.0");
 

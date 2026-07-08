@@ -2,6 +2,7 @@
 
 #include "../include/io.h"
 #include "../include/llama_state.h"
+#include "../include/signals.h"
 
 #include <algorithm>
 #include <cctype>
@@ -419,6 +420,7 @@ bool BackendSession::load_model_status_unlocked(const ModelStatus & model) {
     }
 
     ensure_backend_initialized();
+    install_signal_handlers();
 
     auto       next = LlamaStatePtr(new LlamaState{}, LlamaStateDeleter{});
     const bool ok = setup_llama(*next, model.path, config_.use_gpu, config_.n_ctx, config_.n_batch);
@@ -664,6 +666,7 @@ AnalysisResult BackendSession::analyze_text(const std::string & text) {
         loaded_model_path = snapshot_.loaded_model_path;
     }
 
+    install_signal_handlers();
     result = analyze_text_detailed(*llama, text, config_.n_ctx);
     {
         std::lock_guard<std::mutex> state_lock(state_mutex_);
@@ -714,6 +717,7 @@ AnalysisResult BackendSession::analyze_file(const std::string & path) {
     } else if (!read_file_to_string(path, input_text)) {
         result.error = "Failed to read input file.";
     } else {
+        install_signal_handlers();
         result = analyze_text_detailed(*llama, input_text, config_.n_ctx);
     }
 

@@ -1,6 +1,7 @@
 #include "../include/tui.h"
 
 #include "../include/backend.h"
+#include "../include/signals.h"
 
 #include <ftxui/component/component.hpp>
 #include <ftxui/component/event.hpp>
@@ -500,6 +501,12 @@ int run_tui(const AppConfig & config) {
 
     ticker = std::thread([&] {
         while (keep_ticking) {
+            if (g_interrupted) {
+                keep_ticking = false;
+                backend.set_operation_status("Interrupt requested. Exiting DetectLlama.");
+                screen.ExitLoopClosure()();
+                break;
+            }
             {
                 std::lock_guard<std::mutex> lock(ui_mutex);
                 ++animation_frame;

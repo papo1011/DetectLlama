@@ -5,7 +5,6 @@
 
 #include <argparse/argparse.hpp>
 #include <array>
-#include <csignal>
 #include <cstdlib>
 #include <iostream>
 
@@ -32,7 +31,7 @@ void clear_hf_token_environment() {
 
 int main(const int argc, char * argv[]) {
     clear_hf_token_environment();
-    std::signal(SIGINT, signal_handler);
+    install_signal_handlers();
 
     argparse::ArgumentParser program("DetectLlama", "0.1.0");
 

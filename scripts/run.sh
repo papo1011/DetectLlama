@@ -69,4 +69,9 @@ if [ "$DETECT_LLAMA_DRY_RUN" = "1" ]; then
     exit 0
 fi
 
+set +e
 "${CMD[@]}"
+STATUS=$?
+set -e
+
+exit "$STATUS"

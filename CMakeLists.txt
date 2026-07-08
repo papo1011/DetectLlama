@@ -99,6 +99,7 @@ add_library(detectllama_core
         src/llama_state.cpp
         src/model_catalog.cpp
         src/model_manager.cpp
+        src/signals.cpp
         include/app_config.h
         include/backend.h
         include/console.h
@@ -116,7 +117,6 @@ target_include_directories(detectllama_core PUBLIC include)
 
 add_executable(DetectLlama
         src/main.cpp
-        src/signals.cpp
         src/tui.cpp
         include/signals.h
         include/tui.h
