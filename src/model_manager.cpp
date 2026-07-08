@@ -624,6 +624,113 @@ int select_model_index(const std::vector<ModelStatus> & models, const int prefer
     return 0;
 }
 
+// Last-used can live outside the default llama.cpp/HF cache roots, so add it
+// to the local scan set before matching catalog entries.
+std::string add_existing_last_used_path(std::vector<std::filesystem::path> & local_paths) {
+    const auto last_used = load_last_used_model();
+    if (!last_used) {
+        return "";
+    }
+
+    std::error_code error;
+    if (!std::filesystem::exists(last_used->path, error)) {
+        return "";
+    }
+
+    const auto path = std::filesystem::path(last_used->path);
+    local_paths.push_back(path);
+    return path_key(path);
+}
+
+ModelStatus catalog_model_status(const ModelInfo &                           model,
+                                 const std::vector<std::filesystem::path> & local_paths,
+                                 const std::string &                        last_used_key,
+                                 const HardwareProfile &                    hardware,
+                                 const long long                            overhead_mb) {
+    ModelStatus status;
+    status.info = model;
+    status.path = cached_model_path_from_paths(local_paths, model.filename);
+    status.cached = !status.path.empty();
+    status.fits = model_fits(model, hardware, overhead_mb);
+    status.last_used = !last_used_key.empty() && !status.path.empty() && path_key(status.path) == last_used_key;
+    return status;
+}
+
+void append_catalog_model_statuses(ModelDecision &                         decision,
+                                   const std::vector<std::filesystem::path> & local_paths,
+                                   const std::string &                      last_used_key,
+                                   const long long                          overhead_mb) {
+    for (const auto & model : model_catalog()) {
+        decision.models.push_back(catalog_model_status(model, local_paths, last_used_key, decision.hardware, overhead_mb));
+    }
+}
+
+std::unordered_set<std::string> known_model_path_keys(const std::vector<ModelStatus> & models) {
+    std::unordered_set<std::string> known_paths;
+    for (const auto & model : models) {
+        if (!model.path.empty()) {
+            known_paths.insert(path_key(model.path));
+        }
+    }
+    return known_paths;
+}
+
+void append_local_only_model_statuses(ModelDecision &                         decision,
+                                      const std::vector<std::filesystem::path> & local_paths,
+                                      const std::string &                      last_used_key,
+                                      const long long                          overhead_mb) {
+    auto known_paths = known_model_path_keys(decision.models);
+
+    for (const auto & path : local_paths) {
+        if (!known_paths.insert(path_key(path)).second) {
+            continue;
+        }
+
+        ModelStatus status;
+        if (!describe_local_model_path_impl(path, status.info)) {
+            continue;
+        }
+        status.path = path.string();
+        status.cached = true;
+        status.fits = model_fits(status.info, decision.hardware, overhead_mb);
+        status.downloadable = false;
+        status.catalog_model = false;
+        status.last_used = !last_used_key.empty() && path_key(path) == last_used_key;
+        decision.models.push_back(status);
+    }
+}
+
+std::string recommendation_reason(const HardwareProfile & hardware, const ModelStatus & selected) {
+    if (selected.last_used) {
+        return "Previous DetectLlama model found locally and selected.";
+    }
+    if (selected.cached) {
+        return "Local Llama 3 8B GGUF found; selecting the best compatible local model.";
+    }
+    if (!selected.fits) {
+        return "No ideal quantization fits comfortably; using the smallest available option.";
+    }
+    if (!selected.cached && selected.downloadable) {
+        return "No compatible local Llama 3 8B GGUF found; selected a catalog model for manual download.";
+    }
+    if (hardware.accelerator == "cpu") {
+        return "CPU-only profile: selecting the smallest practical quantization; 30 tokens/sec may be unlikely.";
+    }
+    if (hardware.accelerator == "apple-unified") {
+        return "Apple unified memory profile: preferring higher-quality quantization while keeping a fit fallback.";
+    }
+    return "Recommended from detected memory, disk space, accelerator, and target speed.";
+}
+
+void select_recommended_model(ModelDecision & decision, const AppConfig & config) {
+    int preferred_rank = preferred_rank_for_hardware(decision.hardware);
+    preferred_rank = apply_speed_target(preferred_rank, config.target_tokens_per_sec);
+    decision.recommended_index = select_model_index(decision.models, preferred_rank);
+    decision.models[decision.recommended_index].recommended = true;
+    decision.selected_accelerator = decision.hardware.accelerator;
+    decision.reason = recommendation_reason(decision.hardware, decision.models[decision.recommended_index]);
+}
+
 }  // namespace
 
 std::string hf_cache_dir() {
@@ -667,75 +774,11 @@ ModelDecision build_model_decision(const AppConfig & config) {
 
     const long long overhead_mb = runtime_overhead_mb(decision.hardware, config.n_ctx);
     auto            local_paths = local_gguf_paths();
-    const auto      last_used = load_last_used_model();
-    std::string     last_used_key;
-    if (last_used) {
-        std::error_code error;
-        if (std::filesystem::exists(last_used->path, error)) {
-            const auto path = std::filesystem::path(last_used->path);
-            local_paths.push_back(path);
-            last_used_key = path_key(path);
-        }
-    }
+    const auto      last_used_key = add_existing_last_used_path(local_paths);
 
-    for (const auto & model : model_catalog()) {
-        ModelStatus status;
-        status.info = model;
-        status.path = cached_model_path_from_paths(local_paths, model.filename);
-        status.cached = !status.path.empty();
-        status.fits = model_fits(model, decision.hardware, overhead_mb);
-        status.last_used = !last_used_key.empty() && !status.path.empty() && path_key(status.path) == last_used_key;
-        decision.models.push_back(status);
-    }
-
-    std::unordered_set<std::string> known_paths;
-    for (const auto & model : decision.models) {
-        if (!model.path.empty()) {
-            known_paths.insert(path_key(model.path));
-        }
-    }
-
-    for (const auto & path : local_paths) {
-        if (!known_paths.insert(path_key(path)).second) {
-            continue;
-        }
-
-        ModelStatus status;
-        if (!describe_local_model_path_impl(path, status.info)) {
-            continue;
-        }
-        status.path = path.string();
-        status.cached = true;
-        status.fits = model_fits(status.info, decision.hardware, overhead_mb);
-        status.downloadable = false;
-        status.catalog_model = false;
-        status.last_used = !last_used_key.empty() && path_key(path) == last_used_key;
-        decision.models.push_back(status);
-    }
-
-    int preferred_rank = preferred_rank_for_hardware(decision.hardware);
-    preferred_rank = apply_speed_target(preferred_rank, config.target_tokens_per_sec);
-    decision.recommended_index = select_model_index(decision.models, preferred_rank);
-    decision.models[decision.recommended_index].recommended = true;
-    decision.selected_accelerator = decision.hardware.accelerator;
-
-    const auto & selected = decision.models[decision.recommended_index];
-    if (selected.last_used) {
-        decision.reason = "Previous DetectLlama model found locally and selected.";
-    } else if (selected.cached) {
-        decision.reason = "Local Llama 3 8B GGUF found; selecting the best compatible local model.";
-    } else if (!selected.fits) {
-        decision.reason = "No ideal quantization fits comfortably; using the smallest available option.";
-    } else if (!selected.cached && selected.downloadable) {
-        decision.reason = "No compatible local Llama 3 8B GGUF found; selected a catalog model for manual download.";
-    } else if (decision.hardware.accelerator == "cpu") {
-        decision.reason = "CPU-only profile: selecting the smallest practical quantization; 30 tokens/sec may be unlikely.";
-    } else if (decision.hardware.accelerator == "apple-unified") {
-        decision.reason = "Apple unified memory profile: preferring higher-quality quantization while keeping a fit fallback.";
-    } else {
-        decision.reason = "Recommended from detected memory, disk space, accelerator, and target speed.";
-    }
-
+    append_catalog_model_statuses(decision, local_paths, last_used_key, overhead_mb);
+    append_local_only_model_statuses(decision, local_paths, last_used_key, overhead_mb);
+    select_recommended_model(decision, config);
     return decision;
 }
 

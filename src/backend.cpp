@@ -640,42 +640,60 @@ void BackendSession::apply_analysis_result_locked(const AnalysisResult & result,
     snapshot_.input_source = source_label;
 }
 
+// Captures the loaded model under the state lock so inference can run without
+// holding UI state, while preserving the exact model metadata for last-used.
+bool BackendSession::prepare_analysis_locked(AnalysisResult &       result,
+                                             ActiveModelSnapshot &  model,
+                                             const std::string &    source_label,
+                                             const std::string &    operation_status) {
+    if (!snapshot_.model_ready || !llama_) {
+        result.error = "Model is not ready yet.";
+        apply_analysis_result_locked(result, source_label);
+        return false;
+    }
+
+    snapshot_.operation_status = operation_status;
+    snapshot_.input_source = source_label;
+    snapshot_.score_text = "-";
+    snapshot_.ai_probability = "-";
+    snapshot_.interpretation = "Running inference and scoring.";
+    snapshot_.token_count = "-";
+    snapshot_.elapsed = "-";
+    snapshot_.speed = "measuring...";
+
+    model.llama = llama_;
+    model.info = loaded_model_info_;
+    model.path = snapshot_.loaded_model_path;
+    return true;
+}
+
+void BackendSession::save_last_used_after_success(const AnalysisResult & result, const ActiveModelSnapshot & model) {
+    if (!result.ok || model.path.empty()) {
+        return;
+    }
+
+    std::string save_error;
+    save_last_used_model(model.info, model.path, save_error);
+}
+
 AnalysisResult BackendSession::analyze_text(const std::string & text) {
     std::lock_guard<std::mutex> operation_lock(operation_mutex_);
     AnalysisResult             result;
-    LlamaStatePtr              llama;
-    ModelInfo                  loaded_model_info;
-    std::string                loaded_model_path;
+    ActiveModelSnapshot        model;
     {
         std::lock_guard<std::mutex> state_lock(state_mutex_);
-        if (!snapshot_.model_ready || !llama_) {
-            result.error = "Model is not ready yet.";
-            apply_analysis_result_locked(result, "Pasted text");
+        if (!prepare_analysis_locked(result, model, "Pasted text", "Running detection on pasted text...")) {
             return result;
         }
-        snapshot_.operation_status = "Running detection on pasted text...";
-        snapshot_.input_source = "Pasted text";
-        snapshot_.score_text = "-";
-        snapshot_.ai_probability = "-";
-        snapshot_.interpretation = "Running inference and scoring.";
-        snapshot_.token_count = "-";
-        snapshot_.elapsed = "-";
-        snapshot_.speed = "measuring...";
-        llama = llama_;
-        loaded_model_info = loaded_model_info_;
-        loaded_model_path = snapshot_.loaded_model_path;
     }
 
     install_signal_handlers();
-    result = analyze_text_detailed(*llama, text, config_.n_ctx);
+    result = analyze_text_detailed(*model.llama, text, config_.n_ctx);
     {
         std::lock_guard<std::mutex> state_lock(state_mutex_);
         apply_analysis_result_locked(result, "Pasted text");
     }
-    if (result.ok && !loaded_model_path.empty()) {
-        std::string save_error;
-        save_last_used_model(loaded_model_info, loaded_model_path, save_error);
-    }
+    save_last_used_after_success(result, model);
     return result;
 }
 
@@ -684,29 +702,14 @@ AnalysisResult BackendSession::analyze_file(const std::string & path) {
     namespace fs = std::filesystem;
 
     const std::string source_label = "File: " + fs::path(path).filename().string();
-    AnalysisResult    result;
-    LlamaStatePtr     llama;
-    std::string       input_text;
-    ModelInfo         loaded_model_info;
-    std::string       loaded_model_path;
+    AnalysisResult      result;
+    ActiveModelSnapshot model;
+    std::string         input_text;
     {
         std::lock_guard<std::mutex> state_lock(state_mutex_);
-        if (!snapshot_.model_ready || !llama_) {
-            result.error = "Model is not ready yet.";
-            apply_analysis_result_locked(result, source_label);
+        if (!prepare_analysis_locked(result, model, source_label, "Reading file and running detection...")) {
             return result;
         }
-        snapshot_.operation_status = "Reading file and running detection...";
-        snapshot_.input_source = source_label;
-        snapshot_.score_text = "-";
-        snapshot_.ai_probability = "-";
-        snapshot_.interpretation = "Running inference and scoring.";
-        snapshot_.token_count = "-";
-        snapshot_.elapsed = "-";
-        snapshot_.speed = "measuring...";
-        llama = llama_;
-        loaded_model_info = loaded_model_info_;
-        loaded_model_path = snapshot_.loaded_model_path;
     }
 
     std::error_code path_error;
@@ -718,17 +721,14 @@ AnalysisResult BackendSession::analyze_file(const std::string & path) {
         result.error = "Failed to read input file.";
     } else {
         install_signal_handlers();
-        result = analyze_text_detailed(*llama, input_text, config_.n_ctx);
+        result = analyze_text_detailed(*model.llama, input_text, config_.n_ctx);
     }
 
     {
         std::lock_guard<std::mutex> state_lock(state_mutex_);
         apply_analysis_result_locked(result, source_label);
     }
-    if (result.ok && !loaded_model_path.empty()) {
-        std::string save_error;
-        save_last_used_model(loaded_model_info, loaded_model_path, save_error);
-    }
+    save_last_used_after_success(result, model);
     return result;
 }
 

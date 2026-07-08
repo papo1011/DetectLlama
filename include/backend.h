@@ -107,12 +107,23 @@ private:
 
     using LlamaStatePtr = std::shared_ptr<LlamaState>;
 
+    struct ActiveModelSnapshot {
+        LlamaStatePtr llama;
+        ModelInfo     info;
+        std::string   path;
+    };
+
     void        ensure_backend_initialized();
     bool        load_model_status_unlocked(const ModelStatus & model);
     bool        download_selected_model_unlocked();
     ModelStatus selected_model_locked() const;
     void        refresh_model_cache_state_locked();
+    bool        prepare_analysis_locked(AnalysisResult & result,
+                                        ActiveModelSnapshot & model,
+                                        const std::string &  source_label,
+                                        const std::string &  operation_status);
     void        apply_analysis_result_locked(const AnalysisResult & result, const std::string & source_label);
+    void        save_last_used_after_success(const AnalysisResult & result, const ActiveModelSnapshot & model);
     void        reset_analysis_fields_locked();
 
     AppConfig config_;
