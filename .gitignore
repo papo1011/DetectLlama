@@ -42,3 +42,4 @@ inputs/
 examples/
 .env
 *.parquet
+.cache/
