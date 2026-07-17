@@ -32,13 +32,29 @@ Required:
 Build DetectLlama:
 
 ```bash
-./scripts/build.sh
+./build.sh
 ```
+
+The build first looks for an installed `llama.cpp` CMake package. If none is
+available, it asks whether to use an existing local source checkout or download
+and build `llama.cpp`. The selected provider is stored in the CMake build cache,
+so subsequent builds reuse it without asking again.
+
+For non-interactive builds, choose the fallback explicitly:
+
+```bash
+./build.sh --llama-path /path/to/llama.cpp
+./build.sh --download-llama
+```
+
+`--llama-path` must point to the `llama.cpp` source directory containing
+`CMakeLists.txt` and `include/llama.h`; a standalone `llama-cli` executable is
+not sufficient.
 
 Run the TUI:
 
 ```bash
-./scripts/run.sh
+./run.sh
 ```
 
 DetectLlama opens immediately in fullscreen mode. If the recommended model is already cached in the llama.cpp cache, it
@@ -111,14 +127,16 @@ completes successfully. Set
 You can inspect the launch command without opening the app:
 
 ```bash
-DETECT_LLAMA_DRY_RUN=1 ./scripts/run.sh
+DETECT_LLAMA_DRY_RUN=1 ./run.sh
 ```
 
 Optional advanced commands:
 
 ```bash
-./scripts/build.sh --gpu cuda --jobs 8
-./scripts/build.sh --gpu cpu
+./build.sh --gpu cuda --jobs 8
+./build.sh --gpu cpu
+./build.sh --llama-path ~/src/llama.cpp
+./build.sh --download-llama
 ```
 
 DetectLlama uses the same model cache convention as llama.cpp. By default this is `~/Library/Caches/llama.cpp` on macOS,
