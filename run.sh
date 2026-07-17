@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BUILD_DIR="${BUILD_DIR:-$ROOT_DIR/build}"
 EXE_NAME="DetectLlama"
 
@@ -49,7 +49,7 @@ fi
 
 EXECUTABLE="$BUILD_DIR/$EXE_NAME"
 if [ ! -x "$EXECUTABLE" ] && [ "$DETECT_LLAMA_DRY_RUN" != "1" ]; then
-    echo "Executable not found: $EXECUTABLE. Build first with ./scripts/build.sh" >&2
+    echo "Executable not found: $EXECUTABLE. Build first with ./build.sh" >&2
     exit 1
 fi
 
