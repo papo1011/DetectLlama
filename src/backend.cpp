@@ -168,7 +168,7 @@ std::string command_description(const std::string & command) {
         return "select or download a model";
     }
     if (command == "/path") {
-        return "analyze a local .txt or .md file";
+        return "load a local .txt or .md file";
     }
     return "";
 }
@@ -235,7 +235,7 @@ PromptParseResult parse_prompt_input(const std::string & raw_prompt) {
             return result;
         }
 
-        result.action             = PromptAction::Analyze;
+        result.action             = PromptAction::LoadFile;
         result.input.kind         = DetectionInputKind::File;
         result.input.value        = path;
         result.input.source_label = "File: " + fs::path(path).filename().string();
@@ -246,7 +246,7 @@ PromptParseResult parse_prompt_input(const std::string & raw_prompt) {
     std::error_code   path_error;
     if (possible_path.find_first_of("\r\n") == std::string::npos && possible_path.size() < 4096 &&
         fs::exists(possible_path, path_error) && fs::is_regular_file(possible_path, path_error)) {
-        result.action             = PromptAction::Analyze;
+        result.action             = PromptAction::LoadFile;
         result.input.kind         = DetectionInputKind::File;
         result.input.value        = possible_path;
         result.input.source_label = "File: " + fs::path(possible_path).filename().string();
@@ -255,7 +255,7 @@ PromptParseResult parse_prompt_input(const std::string & raw_prompt) {
 
     result.action             = PromptAction::Analyze;
     result.input.kind         = DetectionInputKind::Text;
-    result.input.value        = trimmed_prompt;
+    result.input.value        = raw_prompt;
     result.input.source_label = "Pasted text";
     return result;
 }

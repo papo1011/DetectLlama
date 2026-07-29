@@ -64,8 +64,11 @@ After the model is ready, use the prompt field:
 
 - type `/` to open the command dropdown
 - enter `/models` to open the model picker
-- enter `/path` to open the file modal, or `/path ./file.txt` to analyze a local `.txt` or `.md` file directly
+- enter `/path` to open the file modal, or `/path ./file.txt` to load a local `.txt` or `.md` file into the input box
 - paste text directly to detect it without creating a file first
+
+Loading a file never starts analysis automatically. Its complete contents are inserted into the input box so they can be
+reviewed or edited first; select `analyze` when the text is ready.
 
 Most terminals implement drag and drop by pasting the file path; DetectLlama still normalizes quoted paths, escaped spaces,
 and `file://` URIs.

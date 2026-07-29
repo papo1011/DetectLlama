@@ -26,6 +26,7 @@ enum class PromptAction {
     Empty,
     ModelPicker,
     ModelQuery,
+    LoadFile,
     Analyze,
     UnknownCommand,
 };

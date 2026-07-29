@@ -1,11 +1,13 @@
 #include "../include/tui.h"
 
 #include "../include/backend.h"
+#include "../include/io.h"
 #include "../include/signals.h"
 
 #include <algorithm>
 #include <atomic>
 #include <chrono>
+#include <filesystem>
 #include <ftxui/component/component.hpp>
 #include <ftxui/component/component_options.hpp>
 #include <ftxui/component/event.hpp>
@@ -448,7 +450,7 @@ ftxui::Element path_picker_view(ftxui::Element path_input, const std::string & m
                feedback,
                text(""),
                hbox({
-                   key_hint("enter", "analyze"),
+                   key_hint("enter", "insert into input"),
                    text("    "),
                    key_hint("esc", "close"),
                }),
@@ -645,9 +647,6 @@ int run_tui(const AppConfig & config) {
         }
 
         analysis_busy = true;
-        if (input_value.kind == DetectionInputKind::File) {
-            prompt = "/path " + input_value.value;
-        }
 
         join_if_running(analysis_worker);
         analysis_worker = std::thread([&, input_value] {
@@ -713,27 +712,60 @@ int run_tui(const AppConfig & config) {
         model_picker_open = false;
         slash_menu_open   = false;
         prompt.clear();
+        prompt_cursor_position = 0;
         backend.set_operation_status("Choose a local .txt or .md file.");
         path_input->TakeFocus();
         redraw();
     };
 
+    // /path is an editor import: preserve the file contents in the prompt and
+    // leave inference under the explicit Analyze action.
+    auto load_file_into_prompt = [&](const DetectionInput & input_value) {
+        namespace fs = std::filesystem;
+
+        const fs::path path(input_value.value);
+        std::error_code path_error;
+        if (!fs::exists(path, path_error) || !fs::is_regular_file(path, path_error)) {
+            path_message = "Input must be an existing regular file.";
+        } else if (!is_supported_input_file(path)) {
+            path_message = "Only .md and .txt files are supported.";
+        } else {
+            std::string contents;
+            if (!read_file_to_string(path.string(), contents)) {
+                path_message = "Failed to read the selected file.";
+            } else {
+                prompt                  = std::move(contents);
+                prompt_cursor_position  = static_cast<int>(prompt.size());
+                path_modal_open         = false;
+                model_picker_open       = false;
+                slash_menu_open         = false;
+                path_message.clear();
+                backend.set_operation_status("Loaded " + path.filename().string() +
+                                             " into the input. Analysis has not started.");
+                refresh_slash_menu_state();
+                focus_prompt();
+                return true;
+            }
+        }
+
+        path_value        = input_value.value;
+        path_modal_open   = true;
+        model_picker_open = false;
+        slash_menu_open   = false;
+        backend.set_operation_status(path_message);
+        path_input->TakeFocus();
+        redraw();
+        return false;
+    };
+
     submit_path = [&] {
         const PromptParseResult parsed = parse_prompt_input("/path " + path_value);
-        if (parsed.action != PromptAction::Analyze || parsed.input.kind != DetectionInputKind::File) {
+        if (parsed.action != PromptAction::LoadFile || parsed.input.kind != DetectionInputKind::File) {
             path_message = parsed.message.empty() ? "Enter a valid .txt or .md file path." : parsed.message;
             redraw();
             return;
         }
-        if (!start_analysis(parsed.input)) {
-            path_message = busy() ? "Another operation is still running." : "Load a model before analyzing a file.";
-            redraw();
-            return;
-        }
-
-        path_modal_open = false;
-        path_message.clear();
-        focus_prompt();
+        load_file_into_prompt(parsed.input);
     };
 
     auto apply_slash_command = [&](const std::string & command) {
@@ -764,6 +796,9 @@ int run_tui(const AppConfig & config) {
                 return;
             case PromptAction::ModelQuery:
                 run_model_query(parsed.model_query);
+                return;
+            case PromptAction::LoadFile:
+                load_file_into_prompt(parsed.input);
                 return;
             case PromptAction::Analyze:
                 start_analysis(parsed.input);
