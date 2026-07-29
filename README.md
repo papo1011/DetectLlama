@@ -1,6 +1,6 @@
 # DetectLlama
 
-DetectLlama is a local TUI application for checking whether a text looks human-written or AI-generated.
+DetectLlama is a local TUI application for measuring how model-like a passage appears to a language model.
 It uses [llama.cpp](https://github.com/ggml-org/llama.cpp) with Llama 3 8B GGUF models, so the full workflow can run on
 your own device without sending the text to an external API.
 
@@ -81,7 +81,8 @@ build/DetectLlamaBackend --model-path /path/to/model.gguf --file ./sample.txt --
 ```
 
 Headless analysis requires an explicit local `--model-path`, so automated runs do not depend on downloads or the TUI
-model picker.
+model picker. JSON output reports the raw score, its direction, and whether the result is calibrated. The legacy
+`ai_probability` field is `null`: a probability cannot be inferred from an uncalibrated discrepancy score.
 
 ## What The TUI Shows
 
@@ -92,7 +93,7 @@ model picker.
 - model selection and download through `/models`
 - a focused file-path modal through `/path`
 - analysis status while inference is running
-- AI probability estimate, discrepancy score, token count, elapsed time, and tokens/sec in a right-hand session rail
+- discrepancy direction and raw score, token count, elapsed time, and tokens/sec in a right-hand session rail
 
 ## Model Selection
 
@@ -150,9 +151,22 @@ ungated Hugging Face repos.
 
 ## Understanding The Score
 
-DetectLlama reports a discrepancy score. Higher scores mean the text looks more human-written to the scoring model.
-Lower scores mean it looks more model-like or AI-generated. Scores near zero are ambiguous and should be interpreted with
-a calibrated threshold for the dataset you care about.
+DetectLlama reports a discrepancy score. In the Fast-DetectGPT convention, higher positive scores are more model-like,
+scores near zero have little directional signal, and negative scores are less model-like. A negative score is not proof
+of human authorship.
+
+The score is not an AI probability. DetectLlama intentionally does not turn it into a percentage or use a universal
+classification threshold. A threshold must be calibrated against representative human and generated passages for the
+exact model, quantization, language, domain, and passage lengths being analyzed. Changing any of those conditions can
+invalidate the calibration.
+
+The official Fast-DetectGPT demo obtains a probability by fitting separate normal distributions to human and generated
+development scores for one exact sampling/scoring model pair. Its published Llama 3 parameters target a Llama 3 8B
+sampling model paired with a Llama 3 8B Instruct scoring model. DetectLlama currently scores with one selected GGUF model,
+so reusing those pair-specific parameters would be misleading, especially across different GGUF quantizations.
+
+Short passages are statistically less reliable. DetectLlama still scores them, but displays a low-confidence warning
+below 50 scored tokens. This is a usability guard, not a calibrated boundary.
 
 ## How The Algorithm Works
 
