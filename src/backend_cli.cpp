@@ -74,7 +74,6 @@ std::string json_escape(const std::string & value) {
 }
 
 void print_json_result(const BackendSnapshot & snapshot, const DetectionInput & input, const AnalysisResult & result) {
-    const double probability = result.ok ? ai_probability_from_score(result.discrepancy) : 0.0;
     std::cout << std::boolalpha;
     std::cout << "{\n";
     std::cout << "  \"ok\": " << result.ok << ",\n";
@@ -87,10 +86,15 @@ void print_json_result(const BackendSnapshot & snapshot, const DetectionInput & 
     std::cout << "    \"label\": \"" << json_escape(snapshot.loaded_model_quant) << "\"\n";
     std::cout << "  },\n";
     std::cout << "  \"score\": " << result.discrepancy << ",\n";
-    std::cout << "  \"ai_probability\": " << probability << ",\n";
-    std::cout << "  \"interpretation\": \"" << json_escape(result.ok ? interpret_score(result.discrepancy) : snapshot.interpretation)
+    std::cout << "  \"score_direction\": \""
+              << json_escape(result.ok ? score_direction(result.discrepancy) : "unavailable") << "\",\n";
+    std::cout << "  \"calibrated\": false,\n";
+    std::cout << "  \"ai_probability\": null,\n";
+    std::cout << "  \"interpretation\": \""
+              << json_escape(result.ok ? interpret_score(result.discrepancy, result.warning) : snapshot.interpretation)
               << "\",\n";
     std::cout << "  \"tokens\": " << result.tokens << ",\n";
+    std::cout << "  \"warning\": \"" << json_escape(result.warning) << "\",\n";
     std::cout << "  \"elapsed_seconds\": " << result.elapsed_seconds << ",\n";
     std::cout << "  \"tokens_per_second\": " << result.tokens_per_second << ",\n";
     std::cout << "  \"error\": \"" << json_escape(result.error) << "\"\n";
@@ -105,8 +109,9 @@ void print_human_result(const BackendSnapshot & snapshot, const AnalysisResult &
 
     std::cout << "Model: " << snapshot.loaded_model_quant << " (" << snapshot.loaded_model_path << ")\n";
     std::cout << "Score: " << format_fixed(result.discrepancy, 4) << "\n";
-    std::cout << "AI probability: " << format_percent(ai_probability_from_score(result.discrepancy)) << "\n";
-    std::cout << "Interpretation: " << interpret_score(result.discrepancy) << "\n";
+    std::cout << "Direction: " << score_direction(result.discrepancy) << "\n";
+    std::cout << "Calibrated: no (AI probability unavailable)\n";
+    std::cout << "Interpretation: " << interpret_score(result.discrepancy, result.warning) << "\n";
     std::cout << "Tokens: " << result.tokens << "\n";
     std::cout << "Elapsed: " << format_fixed(result.elapsed_seconds, 2) << " s\n";
     std::cout << "Speed: " << format_fixed(result.tokens_per_second, 2) << " tokens/sec\n";
@@ -151,8 +156,8 @@ int main(const int argc, char * argv[]) {
     }
 
     const std::string inline_text = program.get<std::string>("--text");
-    const std::string file_path = program.get<std::string>("--file");
-    const bool        use_stdin = program.get<bool>("--stdin");
+    const std::string file_path   = program.get<std::string>("--file");
+    const bool        use_stdin   = program.get<bool>("--stdin");
     const int         input_count = (inline_text.empty() ? 0 : 1) + (file_path.empty() ? 0 : 1) + (use_stdin ? 1 : 0);
     if (input_count != 1) {
         std::cerr << "Provide exactly one input: --text, --file, or --stdin.\n";
@@ -161,18 +166,18 @@ int main(const int argc, char * argv[]) {
 
     DetectionInput input;
     if (!file_path.empty()) {
-        input.kind = DetectionInputKind::File;
-        input.value = normalize_dropped_path(file_path);
+        input.kind         = DetectionInputKind::File;
+        input.value        = normalize_dropped_path(file_path);
         input.source_label = "File: " + std::filesystem::path(input.value).filename().string();
     } else {
-        input.kind = DetectionInputKind::Text;
-        input.value = use_stdin ? trim_copy(read_stdin()) : inline_text;
+        input.kind         = DetectionInputKind::Text;
+        input.value        = use_stdin ? trim_copy(read_stdin()) : inline_text;
         input.source_label = "Pasted text";
     }
 
     AppConfig config;
     config.use_gpu = program.get<bool>("--gpu");
-    config.n_ctx = program.get<int>("--ctx");
+    config.n_ctx   = program.get<int>("--ctx");
     config.n_batch = program.get<int>("--batch");
 
     BackendSession backend(config);
@@ -188,7 +193,7 @@ int main(const int argc, char * argv[]) {
         return 2;
     }
 
-    const AnalysisResult result = backend.analyze_input(input);
+    const AnalysisResult  result   = backend.analyze_input(input);
     const BackendSnapshot snapshot = backend.snapshot();
 
     if (program.get<bool>("--json")) {

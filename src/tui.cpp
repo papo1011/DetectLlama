@@ -309,7 +309,7 @@ ftxui::Element session_rail(const BackendSnapshot & snapshot, const bool model_b
                paragraph(snapshot.interpretation) | bold,
                text(snapshot.input_source) | dim,
                text(""),
-               metric("AI likelihood", snapshot.ai_probability, true),
+               metric("direction", snapshot.score_direction, true),
                separator(),
                metric("score", snapshot.score_text),
                metric("tokens", snapshot.token_count),
