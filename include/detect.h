@@ -5,6 +5,8 @@
 #include <string>
 #include <vector>
 
+inline constexpr int kRecommendedMinScoredTokens = 50;
+
 struct TokenStats {
     double log_likelihood;
     double mean;
@@ -17,6 +19,7 @@ struct AnalysisResult {
     int         tokens            = 0;
     double      elapsed_seconds   = 0.0;
     double      tokens_per_second = 0.0;
+    std::string warning;
     std::string error;
 };
 
