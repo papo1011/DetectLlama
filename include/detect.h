@@ -17,6 +17,8 @@ struct AnalysisResult {
     bool        ok                = false;
     double      discrepancy       = 0.0;
     int         tokens            = 0;
+    int         windows           = 0;
+    int         context_overlap   = 0;
     double      elapsed_seconds   = 0.0;
     double      tokens_per_second = 0.0;
     std::string warning;

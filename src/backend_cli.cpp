@@ -94,6 +94,8 @@ void print_json_result(const BackendSnapshot & snapshot, const DetectionInput & 
               << json_escape(result.ok ? interpret_score(result.discrepancy, result.warning) : snapshot.interpretation)
               << "\",\n";
     std::cout << "  \"tokens\": " << result.tokens << ",\n";
+    std::cout << "  \"windows\": " << result.windows << ",\n";
+    std::cout << "  \"context_overlap\": " << result.context_overlap << ",\n";
     std::cout << "  \"warning\": \"" << json_escape(result.warning) << "\",\n";
     std::cout << "  \"elapsed_seconds\": " << result.elapsed_seconds << ",\n";
     std::cout << "  \"tokens_per_second\": " << result.tokens_per_second << ",\n";
@@ -113,6 +115,10 @@ void print_human_result(const BackendSnapshot & snapshot, const AnalysisResult &
     std::cout << "Calibrated: no (AI probability unavailable)\n";
     std::cout << "Interpretation: " << interpret_score(result.discrepancy, result.warning) << "\n";
     std::cout << "Tokens: " << result.tokens << "\n";
+    std::cout << "Windows: " << result.windows << "\n";
+    if (result.context_overlap > 0) {
+        std::cout << "Context overlap: " << result.context_overlap << " tokens\n";
+    }
     std::cout << "Elapsed: " << format_fixed(result.elapsed_seconds, 2) << " s\n";
     std::cout << "Speed: " << format_fixed(result.tokens_per_second, 2) << " tokens/sec\n";
 }

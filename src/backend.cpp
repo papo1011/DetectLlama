@@ -649,7 +649,9 @@ void BackendSession::apply_analysis_result_locked(const AnalysisResult & result,
         snapshot_.elapsed          = "-";
         snapshot_.speed            = "-";
     } else {
-        snapshot_.operation_status = "Analysis complete.";
+        snapshot_.operation_status = result.windows > 1 ?
+                                         "Analysis complete across " + std::to_string(result.windows) + " context windows." :
+                                         "Analysis complete.";
         snapshot_.score_text       = format_fixed(result.discrepancy, 4);
         snapshot_.score_direction  = score_direction(result.discrepancy);
         snapshot_.interpretation   = interpret_score(result.discrepancy, result.warning);

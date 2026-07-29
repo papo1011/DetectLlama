@@ -171,6 +171,12 @@ so reusing those pair-specific parameters would be misleading, especially across
 Short passages are statistically less reliable. DetectLlama still scores them, but displays a low-confidence warning
 below 50 scored tokens. This is a usability guard, not a calibrated boundary.
 
+Passages longer than the configured model context are not truncated or rejected. DetectLlama divides them into context
+windows, scores every text token exactly once, and retains up to 256 preceding tokens as context at each boundary. The
+final discrepancy is reconstructed by summing the log-likelihood, expected-log-likelihood, and variance terms across
+windows before normalization; window scores are never averaged. Texts that fit in one context keep the original
+single-pass behavior.
+
 ## How The Algorithm Works
 
 DetectLlama follows the analytic Fast-DetectGPT approach. The original
