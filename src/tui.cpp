@@ -479,8 +479,6 @@ ftxui::Element main_view(const BackendSnapshot &          snapshot,
                             text("◆") | bold | color(accent_color()),
                             text(" DETECT") | bold,
                             text("LLAMA") | bold | color(accent_color()),
-                            filler(),
-                            text("type / for commands") | dim,
                         }),
                         separator(),
                         hbox({
