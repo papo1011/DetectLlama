@@ -64,7 +64,7 @@ After the model is ready, use the prompt field:
 
 - type `/` to open the command dropdown
 - enter `/models` to open the model picker
-- enter `/path ./file.txt` to analyze a local `.txt` or `.md` file
+- enter `/path` to open the file modal, or `/path ./file.txt` to analyze a local `.txt` or `.md` file directly
 - paste text directly to detect it without creating a file first
 
 Most terminals implement drag and drop by pasting the file path; DetectLlama still normalizes quoted paths, escaped spaces,
@@ -90,8 +90,9 @@ model picker.
 - extra local `.gguf` files already present in the llama.cpp cache
 - whether each catalog model is already cached or missing
 - model selection and download through `/models`
+- a focused file-path modal through `/path`
 - analysis status while inference is running
-- AI probability estimate, discrepancy score, token count, elapsed time, and tokens/sec in the right sidebar
+- AI probability estimate, discrepancy score, token count, elapsed time, and tokens/sec in a right-hand session rail
 
 ## Model Selection
 
