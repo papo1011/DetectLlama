@@ -85,12 +85,12 @@ build/DetectLlamaBackend --model-path /path/to/model.gguf --file ./sample.txt --
 
 Headless analysis requires an explicit local `--model-path`, so automated runs do not depend on downloads or the TUI
 model picker. JSON output reports the raw score, its direction, and whether the result is calibrated. The legacy
-`ai_probability` field is `null`: a probability cannot be inferred from an uncalibrated discrepancy score.
+`ai_probability` field remains `null`: a calibrated decision threshold is not an AI probability.
 
 ## What The TUI Shows
 
 - the recommended quantization for your device
-- all available Llama 3 8B and Llama 3 8B Instruct GGUF variants
+- all supported Llama 3 8B base GGUF variants
 - extra local `.gguf` files already present in the llama.cpp cache
 - whether each catalog model is already cached or missing
 - model selection and download through `/models`
@@ -112,11 +112,10 @@ DetectLlama targets about `30 tokens/sec` by default, but the selector now prefe
 If only CPU is usable, DetectLlama falls back to the smallest practical quantization and warns that 30 tokens/sec may be
 unlikely.
 
-The built-in catalog includes both `Llama 3 8B` and `Llama 3 8B Instruct`, but only keeps 4-bit and larger GGUF
-variants: base `Q4_*` through `FP16`, and the bartowski Instruct set from `IQ4_*`/`Q4_*` through `FP32`. On Apple
-Silicon, the recommendation is intentionally more aggressive but keeps extra memory headroom: 8 GB machines prefer `Q4_*`,
-16 GB machines can prefer `Q8_0`, and Max/Ultra machines can prefer `FP16`. `FP32` is listed for manual selection but is not
-selected automatically.
+The built-in catalog contains only Llama 3 8B base models, from `Q4_*` through `FP16`. Instruct models are excluded
+because the bundled calibration was measured only for the base-model GGUF files. On Apple Silicon, the recommendation is
+intentionally more aggressive but keeps extra memory headroom: 8 GB machines prefer `Q4_*`, 16 GB machines can prefer
+`Q8_0`, and Max/Ultra machines can prefer `FP16`.
 
 Startup selection is local-first:
 
@@ -158,15 +157,28 @@ DetectLlama reports a discrepancy score. In the Fast-DetectGPT convention, highe
 scores near zero have little directional signal, and negative scores are less model-like. A negative score is not proof
 of human authorship.
 
-The score is not an AI probability. DetectLlama intentionally does not turn it into a percentage or use a universal
-classification threshold. A threshold must be calibrated against representative human and generated passages for the
-exact model, quantization, language, domain, and passage lengths being analyzed. Changing any of those conditions can
-invalidate the calibration.
+The score is not an AI probability. At the default context of 512, recognized catalog GGUF files use quantization-specific
+thresholds calibrated by `notebooks/benchmark.ipynb` on the pinned Ghostbuster essay dataset. A score at or above the
+threshold is reported as `AI-like`; a lower score is reported as `human-like`. The classification is experimental and
+dataset-specific.
 
-The official Fast-DetectGPT demo obtains a probability by fitting separate normal distributions to human and generated
-development scores for one exact sampling/scoring model pair. Its published Llama 3 parameters target a Llama 3 8B
-sampling model paired with a Llama 3 8B Instruct scoring model. DetectLlama currently scores with one selected GGUF model,
-so reusing those pair-specific parameters would be misleading, especially across different GGUF quantizations.
+| Quantization | Threshold |
+|---|---:|
+| Q4_K_S | -2.0881 |
+| Q4_0 | -2.041442 |
+| Q4_K_M | -2.2471 |
+| Q4_1 | -2.5062 |
+| Q5_K_S | -2.6293 |
+| Q5_0 | -2.4060 |
+| Q5_K_M | -2.4852 |
+| Q5_1 | -2.7678 |
+| Q6_K | -2.4378 |
+| Q8_0 | -2.5163 |
+| FP16 | -2.4794 |
+
+Changing the context, model file, quantization, language, domain, or passage-length distribution can invalidate a
+threshold. DetectLlama therefore falls back to an uncalibrated raw score when it cannot identify the benchmarked GGUF or
+when the active context is not 512. `ai_probability` remains unavailable in both modes.
 
 Short passages are statistically less reliable. DetectLlama still scores them, but displays a low-confidence warning
 below 50 scored tokens. This is a usability guard, not a calibrated boundary.
