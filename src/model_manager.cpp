@@ -531,8 +531,13 @@ bool describe_local_model_path_impl(const std::filesystem::path & path, ModelInf
     }
 
     const std::string filename = path.filename().string();
-    if (!looks_like_llama3_8b(filename) || looks_below_four_bit_quant(filename)) {
+    if (!looks_like_llama3_8b(filename) || looks_like_instruct(filename) || looks_below_four_bit_quant(filename)) {
         return false;
+    }
+
+    if (const auto * catalog_model = find_model_by_filename(filename)) {
+        model = *catalog_model;
+        return true;
     }
 
     const auto quant = quant_spec_from_name(filename);
@@ -541,7 +546,7 @@ bool describe_local_model_path_impl(const std::filesystem::path & path, ModelInf
     }
 
     model = {};
-    model.family = looks_like_instruct(filename) ? "Llama 3 8B Instruct" : "Llama 3 8B";
+    model.family = "Llama 3 8B";
     model.quant = quant->label;
     model.repo.clear();
     model.filename = filename;

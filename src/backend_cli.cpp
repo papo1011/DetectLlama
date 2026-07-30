@@ -88,12 +88,22 @@ void print_json_result(const BackendSnapshot & snapshot, const DetectionInput & 
     std::cout << "  \"score\": " << result.discrepancy << ",\n";
     std::cout << "  \"score_direction\": \""
               << json_escape(result.ok ? score_direction(result.discrepancy) : "unavailable") << "\",\n";
-    std::cout << "  \"calibrated\": false,\n";
+    std::cout << "  \"calibrated\": " << result.calibrated << ",\n";
+    if (result.calibrated) {
+        std::cout << "  \"threshold\": " << result.threshold << ",\n";
+        std::cout << "  \"classification\": \"" << (result.predicted_ai ? "AI-like" : "human-like") << "\",\n";
+        std::cout << "  \"calibration_id\": \"" << json_escape(result.calibration_id) << "\",\n";
+    } else {
+        std::cout << "  \"threshold\": null,\n";
+        std::cout << "  \"classification\": null,\n";
+        std::cout << "  \"calibration_id\": null,\n";
+    }
     std::cout << "  \"ai_probability\": null,\n";
     std::cout << "  \"interpretation\": \""
-              << json_escape(result.ok ? interpret_score(result.discrepancy, result.warning) : snapshot.interpretation)
+              << json_escape(result.ok ? interpret_result(result) : snapshot.interpretation)
               << "\",\n";
     std::cout << "  \"tokens\": " << result.tokens << ",\n";
+    std::cout << "  \"context_length\": " << result.context_length << ",\n";
     std::cout << "  \"windows\": " << result.windows << ",\n";
     std::cout << "  \"context_overlap\": " << result.context_overlap << ",\n";
     std::cout << "  \"warning\": \"" << json_escape(result.warning) << "\",\n";
@@ -112,9 +122,17 @@ void print_human_result(const BackendSnapshot & snapshot, const AnalysisResult &
     std::cout << "Model: " << snapshot.loaded_model_quant << " (" << snapshot.loaded_model_path << ")\n";
     std::cout << "Score: " << format_fixed(result.discrepancy, 4) << "\n";
     std::cout << "Direction: " << score_direction(result.discrepancy) << "\n";
-    std::cout << "Calibrated: no (AI probability unavailable)\n";
-    std::cout << "Interpretation: " << interpret_score(result.discrepancy, result.warning) << "\n";
+    if (result.calibrated) {
+        std::cout << "Calibrated: yes (" << result.calibration_id << ")\n";
+        std::cout << "Threshold: " << format_fixed(result.threshold, 4) << "\n";
+        std::cout << "Classification: " << (result.predicted_ai ? "AI-like" : "human-like") << "\n";
+    } else {
+        std::cout << "Calibrated: no (classification unavailable)\n";
+    }
+    std::cout << "AI probability: unavailable\n";
+    std::cout << "Interpretation: " << interpret_result(result) << "\n";
     std::cout << "Tokens: " << result.tokens << "\n";
+    std::cout << "Context: " << result.context_length << "\n";
     std::cout << "Windows: " << result.windows << "\n";
     if (result.context_overlap > 0) {
         std::cout << "Context overlap: " << result.context_overlap << " tokens\n";

@@ -149,6 +149,7 @@ AnalysisResult analyze_text_detailed(const LlamaState & llama, const std::string
 
     const int context_capacity =
         std::min({ n_ctx, static_cast<int>(llama_n_ctx(llama.ctx)), static_cast<int>(llama_n_batch(llama.ctx)) });
+    result.context_length = context_capacity;
     if (context_capacity < 2 || (n_tokens > context_capacity && context_capacity < 3)) {
         result.error = "The model context and batch size are too small for windowed scoring.";
         return result;

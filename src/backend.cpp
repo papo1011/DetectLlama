@@ -75,6 +75,18 @@ std::string hardware_summary(const HardwareProfile & hardware) {
     return summary;
 }
 
+void apply_model_calibration(AnalysisResult & result, const ModelInfo & model) {
+    if (!result.ok || model.threshold_context <= 0 || model.calibration_id.empty() ||
+        result.context_length != model.threshold_context) {
+        return;
+    }
+
+    result.calibrated   = true;
+    result.threshold    = model.threshold;
+    result.predicted_ai = result.discrepancy >= result.threshold;
+    result.calibration_id = model.calibration_id;
+}
+
 }  // namespace
 
 std::string format_fixed(const double value, const int precision) {
@@ -105,6 +117,20 @@ std::string interpret_score(const double score, const std::string & warning) {
     interpretation += " Calibrate a threshold before classifying.";
     if (!warning.empty()) {
         return warning + " " + interpretation;
+    }
+    return interpretation;
+}
+
+std::string interpret_result(const AnalysisResult & result) {
+    if (!result.calibrated) {
+        return interpret_score(result.discrepancy, result.warning);
+    }
+
+    std::string interpretation =
+        result.predicted_ai ? "Above the calibrated threshold: AI-like." : "Below the calibrated threshold: human-like.";
+    interpretation += " Experimental Ghostbuster essay calibration; not an AI probability.";
+    if (!result.warning.empty()) {
+        return result.warning + " " + interpretation;
     }
     return interpretation;
 }
@@ -307,6 +333,8 @@ void BackendSession::reset_analysis_fields_locked() {
                                      "Waiting for model.";
     snapshot_.score_text       = "-";
     snapshot_.score_direction  = "-";
+    snapshot_.classification   = "-";
+    snapshot_.threshold_text   = "-";
     snapshot_.input_source     = "-";
     snapshot_.interpretation = snapshot_.model_ready ? "Ready to analyze files or pasted text." : "Waiting for model.";
     snapshot_.token_count    = "-";
@@ -625,11 +653,11 @@ bool BackendSession::load_model_path(const std::string & path, const std::string
         std::lock_guard<std::mutex> state_lock(state_mutex_);
         snapshot_.model_status = "Failed to load model: " + path;
         snapshot_.operation_status =
-            "Model path must be a recognizable Llama 3 8B GGUF with 4-bit quantization or higher.";
+            "Model path must be a recognizable Llama 3 8B base GGUF with 4-bit quantization or higher.";
         snapshot_.interpretation = "No model is loaded.";
         return false;
     }
-    if (!label.empty()) {
+    if (!label.empty() && model.info.calibration_id.empty()) {
         model.info.quant = label;
     }
     model.path          = path;
@@ -645,6 +673,8 @@ void BackendSession::apply_analysis_result_locked(const AnalysisResult & result,
         snapshot_.interpretation   = "No score produced.";
         snapshot_.score_text       = "-";
         snapshot_.score_direction  = "-";
+        snapshot_.classification   = "-";
+        snapshot_.threshold_text   = "-";
         snapshot_.token_count      = std::to_string(result.tokens);
         snapshot_.elapsed          = "-";
         snapshot_.speed            = "-";
@@ -654,7 +684,9 @@ void BackendSession::apply_analysis_result_locked(const AnalysisResult & result,
                                          "Analysis complete.";
         snapshot_.score_text       = format_fixed(result.discrepancy, 4);
         snapshot_.score_direction  = score_direction(result.discrepancy);
-        snapshot_.interpretation   = interpret_score(result.discrepancy, result.warning);
+        snapshot_.classification   = result.calibrated ? (result.predicted_ai ? "AI-like" : "human-like") : "uncalibrated";
+        snapshot_.threshold_text   = result.calibrated ? format_fixed(result.threshold, 4) : "-";
+        snapshot_.interpretation   = interpret_result(result);
         snapshot_.token_count      = std::to_string(result.tokens);
         snapshot_.elapsed          = format_fixed(result.elapsed_seconds, 2) + " s";
         snapshot_.speed            = format_fixed(result.tokens_per_second, 2) + " tokens/sec";
@@ -678,6 +710,8 @@ bool BackendSession::prepare_analysis_locked(AnalysisResult &      result,
     snapshot_.input_source     = source_label;
     snapshot_.score_text       = "-";
     snapshot_.score_direction  = "-";
+    snapshot_.classification   = "-";
+    snapshot_.threshold_text   = "-";
     snapshot_.interpretation   = "Running inference and scoring.";
     snapshot_.token_count      = "-";
     snapshot_.elapsed          = "-";
@@ -711,6 +745,7 @@ AnalysisResult BackendSession::analyze_text(const std::string & text) {
 
     install_signal_handlers();
     result = analyze_text_detailed(*model.llama, text, config_.n_ctx);
+    apply_model_calibration(result, model.info);
     {
         std::lock_guard<std::mutex> state_lock(state_mutex_);
         apply_analysis_result_locked(result, "Pasted text");
@@ -744,6 +779,7 @@ AnalysisResult BackendSession::analyze_file(const std::string & path) {
     } else {
         install_signal_handlers();
         result = analyze_text_detailed(*model.llama, input_text, config_.n_ctx);
+        apply_model_calibration(result, model.info);
     }
 
     {

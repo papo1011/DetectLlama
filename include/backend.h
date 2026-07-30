@@ -49,6 +49,8 @@ struct BackendSnapshot {
     std::string   input_source     = "-";
     std::string   score_text       = "-";
     std::string   score_direction  = "-";
+    std::string   classification   = "-";
+    std::string   threshold_text   = "-";
     std::string   interpretation   = "Waiting for model.";
     std::string   token_count      = "-";
     std::string   elapsed          = "-";
@@ -60,6 +62,7 @@ struct BackendSnapshot {
 std::string format_fixed(double value, int precision);
 std::string score_direction(double score);
 std::string interpret_score(double score, const std::string & warning = "");
+std::string interpret_result(const AnalysisResult & result);
 
 std::string              trim_copy(const std::string & value);
 std::string              lower_copy(std::string value);

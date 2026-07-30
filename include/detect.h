@@ -16,7 +16,12 @@ struct TokenStats {
 struct AnalysisResult {
     bool        ok                = false;
     double      discrepancy       = 0.0;
+    bool        calibrated        = false;
+    double      threshold         = 0.0;
+    bool        predicted_ai      = false;
+    std::string calibration_id;
     int         tokens            = 0;
+    int         context_length    = 0;
     int         windows           = 0;
     int         context_overlap   = 0;
     double      elapsed_seconds   = 0.0;
