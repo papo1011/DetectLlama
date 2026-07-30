@@ -38,7 +38,7 @@ int main(const int argc, char * argv[]) {
     program.add_argument("--verbose").help("Verbosity level").default_value(false).implicit_value(true);
     program.add_argument("--gpu").help("Enable GPU acceleration").default_value(false).implicit_value(true);
     program.add_argument("--target-tps").help("Target tokens/sec for automatic quant selection").default_value(30).scan<'i', int>();
-    program.add_argument("-c", "--ctx").help("Size of the prompt context").default_value(2048).scan<'i', int>();
+    program.add_argument("-c", "--ctx").help("Size of the prompt context").default_value(512).scan<'i', int>();
     program.add_argument("-b", "--batch").help("Logical max batch size").default_value(2048).scan<'i', int>();
 
     try {

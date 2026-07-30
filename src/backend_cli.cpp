@@ -139,7 +139,7 @@ int main(const int argc, char * argv[]) {
     program.add_argument("--model-label").help("Label to report for --model-path").default_value(std::string("local"));
     program.add_argument("--text").help("Inline text to analyze").default_value(std::string(""));
     program.add_argument("--file").help("Path to a .txt or .md file to analyze").default_value(std::string(""));
-    program.add_argument("-c", "--ctx").help("Size of the prompt context").default_value(2048).scan<'i', int>();
+    program.add_argument("-c", "--ctx").help("Size of the prompt context").default_value(512).scan<'i', int>();
     program.add_argument("-b", "--batch").help("Logical max batch size").default_value(2048).scan<'i', int>();
 
     try {
