@@ -42,6 +42,7 @@ TUI commands:
 - `/download` downloads and loads the fixed model
 - `/path` opens the file modal
 - `/path ./file.txt` imports a local `.txt` or `.md` file into the editor
+- `/threshold` changes the classification threshold for the current session or resets it to `-1.5500`
 
 Imported files are not analyzed automatically. Review or edit the text, then select `analyze`.
 
@@ -90,6 +91,9 @@ Context, batch size, model label, and quantization are deliberately not command-
 DetectLlama implements the analytic Fast-DetectGPT discrepancy statistic. Higher scores are more model-like; lower scores
 are less model-like. With the fixed configuration, a score at or above `-1.550` is reported as `AI-like`, while a lower
 score is reported as `human-like`.
+
+The `/threshold` modal can override this boundary for the current session. Resetting it restores the calibrated default
+of `-1.5500`; changing the threshold does not require running inference again on the current result.
 
 The threshold was calibrated in `notebooks/q4_q8_context_benchmark.ipynb` on the pinned Ghostbuster essay dataset using
 human text and AI text from Claude and GPT. It is experimental and dataset-specific: the classification is not proof of

@@ -7,6 +7,7 @@
 #include <filesystem>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -25,6 +26,7 @@ struct DetectionInput {
 enum class PromptAction {
     Empty,
     DownloadModel,
+    ThresholdModal,
     LoadFile,
     Analyze,
     UnknownCommand,
@@ -82,6 +84,8 @@ class BackendSession {
     void initialize();
     void set_operation_status(const std::string & status);
     void clear_analysis();
+    bool set_threshold(double threshold);
+    void reset_threshold();
 
     bool download_and_load_model();
     bool load_model_path(const std::string & path);
@@ -118,5 +122,7 @@ class BackendSession {
 
     BackendSnapshot snapshot_;
     LlamaStatePtr   llama_;
+    std::optional<AnalysisResult> last_result_;
+    double          threshold_ = kDetectionThreshold;
     bool            backend_initialized_ = false;
 };

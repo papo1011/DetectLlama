@@ -75,7 +75,7 @@ std::string hardware_summary(const HardwareProfile & hardware) {
     return summary;
 }
 
-void apply_model_calibration(AnalysisResult & result) {
+void apply_model_calibration(AnalysisResult & result, const double threshold) {
     const auto & model = detectllama_model();
     if (!result.ok || model.threshold_context <= 0 || model.calibration_id.empty() ||
         result.context_length != model.threshold_context) {
@@ -83,7 +83,7 @@ void apply_model_calibration(AnalysisResult & result) {
     }
 
     result.calibrated   = true;
-    result.threshold    = model.threshold;
+    result.threshold    = threshold;
     result.predicted_ai = result.discrepancy >= result.threshold;
     result.calibration_id = model.calibration_id;
 }
@@ -164,7 +164,7 @@ std::string slash_command_argument(const std::string & value, const std::string_
 }
 
 std::vector<std::string> slash_command_matches(const std::string & value) {
-    static const std::vector<std::string> commands = { "/download", "/path" };
+    static const std::vector<std::string> commands = { "/download", "/path", "/threshold" };
     const std::string                     trimmed  = lower_copy(trim_copy(value));
     if (trimmed.empty() || trimmed.front() != '/' || trimmed.find_first_of(" \t\r\n") != std::string::npos) {
         return {};
@@ -185,6 +185,9 @@ std::string command_description(const std::string & command) {
     }
     if (command == "/path") {
         return "load a local .txt or .md file";
+    }
+    if (command == "/threshold") {
+        return "change the classification threshold";
     }
     return "";
 }
@@ -235,9 +238,14 @@ PromptParseResult parse_prompt_input(const std::string & raw_prompt) {
         return result;
     }
 
+    if (starts_with_slash_command(trimmed_prompt, "/threshold")) {
+        result.action = PromptAction::ThresholdModal;
+        return result;
+    }
+
     if (trimmed_prompt.front() == '/' && !starts_with_slash_command(trimmed_prompt, "/path")) {
         result.action  = PromptAction::UnknownCommand;
-        result.message = "Unknown command. Available commands: /download and /path <file>.";
+        result.message = "Unknown command. Available commands: /download, /path <file>, and /threshold.";
         return result;
     }
 
@@ -312,7 +320,30 @@ void BackendSession::set_operation_status(const std::string & status) {
 
 void BackendSession::clear_analysis() {
     std::lock_guard<std::mutex> lock(state_mutex_);
+    last_result_.reset();
     reset_analysis_fields_locked();
+}
+
+bool BackendSession::set_threshold(const double threshold) {
+    if (!std::isfinite(threshold)) {
+        return false;
+    }
+
+    std::lock_guard<std::mutex> lock(state_mutex_);
+    threshold_                = threshold;
+    snapshot_.threshold_text  = format_fixed(threshold_, 4);
+    if (last_result_ && last_result_->ok) {
+        last_result_->calibrated   = true;
+        last_result_->threshold    = threshold_;
+        last_result_->predicted_ai = last_result_->discrepancy >= threshold_;
+        snapshot_.classification  = last_result_->predicted_ai ? "AI-like" : "human-like";
+        snapshot_.interpretation  = interpret_result(*last_result_);
+    }
+    return true;
+}
+
+void BackendSession::reset_threshold() {
+    set_threshold(kDetectionThreshold);
 }
 
 void BackendSession::reset_analysis_fields_locked() {
@@ -321,7 +352,7 @@ void BackendSession::reset_analysis_fields_locked() {
                                      "Waiting for model.";
     snapshot_.score_text       = "-";
     snapshot_.classification   = "-";
-    snapshot_.threshold_text   = format_fixed(kDetectionThreshold, 4);
+    snapshot_.threshold_text   = format_fixed(threshold_, 4);
     snapshot_.input_source     = "-";
     snapshot_.interpretation = snapshot_.model_ready ? "Ready to analyze." : "Waiting for model.";
     snapshot_.token_count    = "-";
@@ -447,6 +478,7 @@ bool BackendSession::load_model_path(const std::string & path) {
 
 void BackendSession::apply_analysis_result_locked(const AnalysisResult & result, const std::string & source_label) {
     if (!result.ok) {
+        last_result_.reset();
         snapshot_.operation_status = result.error;
         snapshot_.interpretation   = "No score produced.";
         snapshot_.score_text       = "-";
@@ -456,6 +488,7 @@ void BackendSession::apply_analysis_result_locked(const AnalysisResult & result,
         snapshot_.elapsed          = "-";
         snapshot_.speed            = "-";
     } else {
+        last_result_                  = result;
         snapshot_.operation_status = "Analysis complete.";
         snapshot_.score_text       = format_fixed(result.discrepancy, 4);
         snapshot_.classification   = result.calibrated ? (result.predicted_ai ? "AI-like" : "human-like") : "uncalibrated";
@@ -524,9 +557,9 @@ AnalysisResult BackendSession::analyze_text(const std::string & text) {
     result = analyze_text_detailed(*model.llama, text, [this](const AnalysisProgress & progress) {
         apply_analysis_progress(progress);
     });
-    apply_model_calibration(result);
     {
         std::lock_guard<std::mutex> state_lock(state_mutex_);
+        apply_model_calibration(result, threshold_);
         apply_analysis_result_locked(result, "Pasted text");
     }
     return result;
@@ -559,11 +592,11 @@ AnalysisResult BackendSession::analyze_file(const std::string & path) {
         result = analyze_text_detailed(*model.llama, input_text, [this](const AnalysisProgress & progress) {
             apply_analysis_progress(progress);
         });
-        apply_model_calibration(result);
     }
 
     {
         std::lock_guard<std::mutex> state_lock(state_mutex_);
+        apply_model_calibration(result, threshold_);
         apply_analysis_result_locked(result, source_label);
     }
     return result;

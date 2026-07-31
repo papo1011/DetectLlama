@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <atomic>
 #include <chrono>
+#include <cmath>
 #include <filesystem>
 #include <ftxui/component/component.hpp>
 #include <ftxui/component/component_options.hpp>
@@ -16,6 +17,7 @@
 #include <ftxui/screen/box.hpp>
 #include <ftxui/screen/string.hpp>
 #include <functional>
+#include <stdexcept>
 #include <string>
 #include <thread>
 #include <utility>
@@ -26,6 +28,7 @@ namespace {
 constexpr int          kSessionRailWidth  = 30;
 constexpr int          kInputChromeWidth  = kSessionRailWidth + 2;
 constexpr int          kPathModalWidth    = 72;
+constexpr int          kThresholdModalWidth = 58;
 constexpr const char * kPromptPlaceholder = "Paste text here, or type / for commands";
 
 struct WrappedGlyph {
@@ -263,7 +266,10 @@ ftxui::Elements slash_command_rows(const std::vector<std::string> & commands, co
     return rows;
 }
 
-ftxui::Element session_rail(const BackendSnapshot & snapshot, const bool model_busy, const int animation_frame) {
+ftxui::Element session_rail(const BackendSnapshot & snapshot,
+                            ftxui::Element          threshold_control,
+                            const bool              model_busy,
+                            const int               animation_frame) {
     using namespace ftxui;
 
     const auto indicator = model_busy ? spinner(6, static_cast<std::size_t>(animation_frame)) | color(accent_color()) :
@@ -281,7 +287,7 @@ ftxui::Element session_rail(const BackendSnapshot & snapshot, const bool model_b
                metric("classification", snapshot.classification, true),
                separator(),
                metric("score", snapshot.score_text),
-               metric("threshold", snapshot.threshold_text),
+               std::move(threshold_control),
                metric("tokens", snapshot.token_count),
                metric("progress", snapshot.progress),
                metric("speed", snapshot.speed),
@@ -329,8 +335,39 @@ ftxui::Element path_picker_view(ftxui::Element path_input, const std::string & m
            borderRounded | bgcolor(Color::Grey3) | size(WIDTH, EQUAL, kPathModalWidth);
 }
 
+ftxui::Element threshold_picker_view(ftxui::Element input, const std::string & message, const bool error) {
+    using namespace ftxui;
+
+    auto feedback = message.empty() ? text("Default: -1.5500. Higher scores are classified as AI-like.") | dim :
+                                      paragraph(message) | color(error ? Color::RedLight : accent_color());
+    return vbox({
+               hbox({
+                   text("◆ THRESHOLD") | bold | color(accent_color()),
+                   filler(),
+                   text("session only") | dim,
+               }),
+               text(""),
+               hbox({
+                   text("› ") | bold | color(accent_color()),
+                   std::move(input) | flex,
+               }),
+               separator(),
+               feedback,
+               text(""),
+               hbox({
+                   key_hint("enter", "apply"),
+                   text("    "),
+                   key_hint("r", "reset default"),
+                   text("    "),
+                   key_hint("esc", "close"),
+               }),
+           }) |
+           borderRounded | bgcolor(Color::Grey3) | size(WIDTH, EQUAL, kThresholdModalWidth);
+}
+
 ftxui::Element main_view(const BackendSnapshot &          snapshot,
                          ftxui::Element                   input,
+                         ftxui::Element                   threshold_control,
                          ftxui::Element                   footer,
                          const std::vector<std::string> & commands,
                          const int                        command_index,
@@ -357,7 +394,7 @@ ftxui::Element main_view(const BackendSnapshot &          snapshot,
                         hbox({
                             vbox(std::move(input_section)) | flex,
                             separator(),
-                            session_rail(snapshot, model_busy, animation_frame),
+                            session_rail(snapshot, std::move(threshold_control), model_busy, animation_frame),
                         }) | flex,
                         separator(),
                         std::move(footer),
@@ -389,10 +426,14 @@ int run_tui(const AppConfig & config) {
     std::string      prompt;
     std::string      path_value;
     std::string      path_message;
+    std::string      threshold_value;
+    std::string      threshold_message;
+    bool             threshold_error = false;
     std::atomic_bool model_busy        = true;
     std::atomic_bool analysis_busy     = false;
     bool             slash_menu_open   = false;
     bool             path_modal_open   = false;
+    bool             threshold_modal_open = false;
     int              slash_menu_index  = 0;
     std::atomic_int  animation_frame   = 0;
     std::chrono::steady_clock::time_point analysis_started_at;
@@ -408,7 +449,7 @@ int run_tui(const AppConfig & config) {
 
     auto refresh_slash_menu_state = [&] {
         const auto matches = slash_command_matches(prompt);
-        slash_menu_open    = !path_modal_open && !matches.empty();
+        slash_menu_open    = !path_modal_open && !threshold_modal_open && !matches.empty();
         if (slash_menu_open) {
             slash_menu_index = std::clamp(slash_menu_index, 0, static_cast<int>(matches.size()) - 1);
         } else {
@@ -503,6 +544,20 @@ int run_tui(const AppConfig & config) {
     path_input_options.transform = style_input;
     auto path_input              = Input(path_input_options);
 
+    std::function<void()> submit_threshold;
+    InputOption           threshold_input_options;
+    threshold_input_options.content     = &threshold_value;
+    threshold_input_options.placeholder = "-1.5500";
+    threshold_input_options.on_change   = [&] {
+        threshold_message.clear();
+        threshold_error = false;
+    };
+    threshold_input_options.on_enter = [&] {
+        submit_threshold();
+    };
+    threshold_input_options.transform = style_input;
+    auto threshold_input              = Input(threshold_input_options);
+
     auto close_path_modal = [&] {
         path_modal_open = false;
         path_message.clear();
@@ -513,11 +568,63 @@ int run_tui(const AppConfig & config) {
         path_value = slash_command_argument(prompt, "/path");
         path_message.clear();
         path_modal_open   = true;
+        threshold_modal_open = false;
         slash_menu_open   = false;
         prompt.clear();
         prompt_cursor_position = 0;
         backend.set_operation_status("Choose a local .txt or .md file.");
         path_input->TakeFocus();
+        redraw();
+    };
+
+    auto close_threshold_modal = [&] {
+        threshold_modal_open = false;
+        threshold_message.clear();
+        threshold_error = false;
+        focus_prompt();
+    };
+
+    auto open_threshold_modal = [&] {
+        if (busy()) {
+            backend.set_operation_status("Please wait for the current operation to finish.");
+            return;
+        }
+        threshold_value      = backend.snapshot().threshold_text;
+        threshold_message.clear();
+        threshold_error      = false;
+        threshold_modal_open = true;
+        path_modal_open      = false;
+        slash_menu_open      = false;
+        prompt.clear();
+        prompt_cursor_position = 0;
+        backend.set_operation_status("Edit the classification threshold.");
+        threshold_input->TakeFocus();
+        redraw();
+    };
+
+    submit_threshold = [&] {
+        const std::string value = trim_copy(threshold_value);
+        std::size_t       parsed = 0;
+        try {
+            const double threshold = std::stod(value, &parsed);
+            if (parsed != value.size() || !std::isfinite(threshold) || !backend.set_threshold(threshold)) {
+                throw std::invalid_argument("threshold");
+            }
+            backend.set_operation_status("Threshold updated to " + format_fixed(threshold, 4) + ".");
+            close_threshold_modal();
+        } catch (const std::exception &) {
+            threshold_message = "Enter a finite number, for example -1.5500.";
+            threshold_error   = true;
+            redraw();
+        }
+    };
+
+    auto reset_threshold = [&] {
+        backend.reset_threshold();
+        threshold_value   = format_fixed(kDetectionThreshold, 4);
+        threshold_message = "Reset to the default threshold.";
+        threshold_error   = false;
+        backend.set_operation_status("Threshold reset to " + threshold_value + ".");
         redraw();
     };
 
@@ -540,6 +647,7 @@ int run_tui(const AppConfig & config) {
                 prompt                  = std::move(contents);
                 prompt_cursor_position  = static_cast<int>(prompt.size());
                 path_modal_open         = false;
+                threshold_modal_open    = false;
                 slash_menu_open         = false;
                 path_message.clear();
                 backend.set_operation_status("Loaded " + path.filename().string() +
@@ -552,6 +660,7 @@ int run_tui(const AppConfig & config) {
 
         path_value        = input_value.value;
         path_modal_open   = true;
+        threshold_modal_open = false;
         slash_menu_open   = false;
         backend.set_operation_status(path_message);
         path_input->TakeFocus();
@@ -576,6 +685,10 @@ int run_tui(const AppConfig & config) {
         }
         if (command == "/path") {
             open_path_modal();
+            return;
+        }
+        if (command == "/threshold") {
+            open_threshold_modal();
         }
     };
 
@@ -595,6 +708,9 @@ int run_tui(const AppConfig & config) {
             case PromptAction::DownloadModel:
                 download_fixed_model();
                 return;
+            case PromptAction::ThresholdModal:
+                open_threshold_modal();
+                return;
             case PromptAction::LoadFile:
                 load_file_into_prompt(parsed.input);
                 return;
@@ -612,8 +728,12 @@ int run_tui(const AppConfig & config) {
         prompt.clear();
         path_value.clear();
         path_message.clear();
+        threshold_value.clear();
+        threshold_message.clear();
+        threshold_error = false;
         slash_menu_open   = false;
         path_modal_open   = false;
+        threshold_modal_open = false;
         backend.clear_analysis();
         focus_prompt();
     };
@@ -630,6 +750,22 @@ int run_tui(const AppConfig & config) {
     auto clear_button   = Button("reset", clear, quiet_button());
     auto quit_button    = Button("quit", quit, quiet_button());
 
+    ButtonOption threshold_button_option;
+    threshold_button_option.transform = [&](const EntryState & state) {
+        auto label = text("threshold") | underlined | color(accent_color());
+        auto value = text(backend.snapshot().threshold_text) | bold;
+        auto row   = hbox({
+            std::move(label),
+            filler(),
+            std::move(value),
+        });
+        if (state.focused) {
+            row |= bgcolor(Color::Grey23) | focus;
+        }
+        return row;
+    };
+    auto threshold_button = Button("threshold", open_threshold_modal, threshold_button_option);
+
     auto buttons = Container::Horizontal({
         analyze_button,
         clear_button,
@@ -638,6 +774,7 @@ int run_tui(const AppConfig & config) {
 
     auto main_container = Container::Vertical({
         wrapped_input,
+        threshold_button,
         buttons,
     });
 
@@ -649,8 +786,9 @@ int run_tui(const AppConfig & config) {
             snapshot.elapsed = format_fixed(elapsed, 1) + " s";
         }
         const auto commands = slash_menu_open ? slash_command_matches(prompt) : std::vector<std::string>{};
-        return main_view(snapshot, wrapped_input->Render(), buttons->Render(), commands, slash_menu_index,
-                         model_busy.load(), animation_frame.load(), path_modal_open);
+        return main_view(snapshot, wrapped_input->Render(), threshold_button->Render(), buttons->Render(), commands,
+                         slash_menu_index, model_busy.load(), animation_frame.load(),
+                         path_modal_open || threshold_modal_open);
     });
 
     main_renderer |= CatchEvent([&](Event event) {
@@ -699,8 +837,26 @@ int run_tui(const AppConfig & config) {
         return false;
     });
 
+    auto threshold_modal = Renderer(threshold_input, [&] {
+        return threshold_picker_view(threshold_input->Render(), threshold_message, threshold_error);
+    });
+
+    threshold_modal |= CatchEvent([&](Event event) {
+        if (event == Event::Escape) {
+            close_threshold_modal();
+            backend.set_operation_status("Threshold editor closed.");
+            return true;
+        }
+        if (event == Event::Character('r')) {
+            reset_threshold();
+            return true;
+        }
+        return false;
+    });
+
     Component application = main_renderer;
     application |= Modal(path_modal, &path_modal_open);
+    application |= Modal(threshold_modal, &threshold_modal_open);
 
     // FTXUI has no timer events, so a lightweight worker advances the model
     // spinner and forwards process interrupts to the UI loop.
