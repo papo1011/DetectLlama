@@ -1,223 +1,114 @@
 # DetectLlama
 
-DetectLlama is a local TUI application for measuring how model-like a passage appears to a language model.
-It uses [llama.cpp](https://github.com/ggml-org/llama.cpp) with Llama 3 8B GGUF models, so the full workflow can run on
-your own device without sending the text to an external API.
+DetectLlama is a local TUI that estimates how model-like a passage is using
+[llama.cpp](https://github.com/ggml-org/llama.cpp). Text never needs to leave your device.
 
-The goal is simple: open DetectLlama, let it choose the best model quantization for your machine, download it if needed,
-then paste text directly or analyze a local `.txt`/`.md` file.
+The detector intentionally supports one configuration only:
+
+- Llama 3 8B base, `Q4_0`
+- `Meta-Llama-3-8B.Q4_0.gguf` from `QuantFactory/Meta-Llama-3-8B-GGUF`
+- fixed context and batch size of 128 tokens
+- calibrated discrepancy threshold `-1.550`
+
+This fixed setup prevents a threshold calibrated for one model or context from being applied to a different one.
 
 <p align="center">
   <img src="assets/tui.png" alt="DetectLlama TUI" width="900"/>
 </p>
 
-## Why DetectLlama?
+## Quick start
 
-- **Local by default**: input files stay on your machine.
-- **Hardware-aware setup**: DetectLlama profiles RAM, disk, CPU, NVIDIA VRAM, or Apple unified memory.
-- **Automatic model recommendation**: the TUI highlights the Llama 3 8B model and quantization that best fits the detected device.
-- **One-screen workflow**: model selection, llama.cpp cache discovery, download, loading, and analysis happen inside the
-  terminal UI.
-- **Anonymous public downloads**: missing public GGUF models are downloaded directly from Hugging Face without passing
-  tokens.
-
-## Quick Start
-
-Required:
-
-- CMake 3.15+
-- a C++20 compiler (`g++`, `clang++`, or MSVC)
-- Git
-
-Build DetectLlama:
+Requirements are CMake 3.15+, a C++20 compiler, Git, and `curl` for the optional model download.
 
 ```bash
 ./build.sh
+./run.sh
 ```
 
-The build first looks for an installed `llama.cpp` CMake package. If none is
-available, it asks whether to use an existing local source checkout or download
-and build `llama.cpp`. The selected provider is stored in the CMake build cache,
-so subsequent builds reuse it without asking again.
-
-For non-interactive builds, choose the fallback explicitly:
+The build uses an installed llama.cpp CMake package when available. Otherwise it can use a local checkout or download
+the source:
 
 ```bash
 ./build.sh --llama-path /path/to/llama.cpp
 ./build.sh --download-llama
 ```
 
-`--llama-path` must point to the `llama.cpp` source directory containing
-`CMakeLists.txt` and `include/llama.h`; a standalone `llama-cli` executable is
-not sufficient.
+At startup DetectLlama looks for the exact Q4_0 GGUF in the llama.cpp cache, Hugging Face snapshots, and optional custom
+model directories. If it is missing, enter `/download` in the TUI to download about 4.6 GiB anonymously from the public
+Hugging Face repository. The application never starts this large download without an explicit command.
 
-Run the TUI:
+TUI commands:
 
-```bash
-./run.sh
-```
+- `/download` downloads and loads the fixed model
+- `/path` opens the file modal
+- `/path ./file.txt` imports a local `.txt` or `.md` file into the editor
 
-DetectLlama opens immediately in fullscreen mode. If the recommended model is already cached in the llama.cpp cache, it
-loads it. If not, type `/models`, choose a quantization, and press Enter to download and load it.
+Imported files are not analyzed automatically. Review or edit the text, then select `analyze`.
 
-After the model is ready, use the prompt field:
+## Model cache
 
-- type `/` to open the command dropdown
-- enter `/models` to open the model picker
-- enter `/path` to open the file modal, or `/path ./file.txt` to load a local `.txt` or `.md` file into the input box
-- paste text directly to detect it without creating a file first
+The default llama.cpp cache is `~/Library/Caches/llama.cpp` on macOS,
+`$XDG_CACHE_HOME/llama.cpp` on Linux when set, or `~/.cache/llama.cpp` otherwise. `LLAMA_CACHE` overrides the primary
+download cache. `DETECT_LLAMA_MODEL_DIRS=/path/one:/path/two` adds recursive search roots, but only the exact supported
+Q4_0 filename is accepted.
 
-Loading a file never starts analysis automatically. Its complete contents are inserted into the input box so they can be
-reviewed or edited first; select `analyze` when the text is ready.
+DetectLlama clears common Hugging Face token environment variables and downloads only from the public, ungated model
+repository.
 
-Most terminals implement drag and drop by pasting the file path; DetectLlama still normalizes quoted paths, escaped spaces,
-and `file://` URIs.
-
-## Headless Backend
-
-The build also produces `build/DetectLlamaBackend`, a non-interactive entry point that uses the same backend as the TUI
-without linking or opening FTXUI. It is intended for automation and future end-to-end backend tests.
-
-```bash
-build/DetectLlamaBackend --model-path /path/to/model.gguf --text "Text to analyze" --json
-build/DetectLlamaBackend --model-path /path/to/model.gguf --file ./sample.txt --json
-```
-
-Headless analysis requires an explicit local `--model-path`, so automated runs do not depend on downloads or the TUI
-model picker. JSON output reports the raw score, its direction, and whether the result is calibrated. The legacy
-`ai_probability` field remains `null`: a calibrated decision threshold is not an AI probability.
-
-## What The TUI Shows
-
-- the recommended quantization for your device
-- all supported Llama 3 8B base GGUF variants
-- extra local `.gguf` files already present in the llama.cpp cache
-- whether each catalog model is already cached or missing
-- model selection and download through `/models`
-- a focused file-path modal through `/path`
-- analysis status while inference is running
-- discrepancy direction and raw score, token count, elapsed time, and tokens/sec in a right-hand session rail
-
-## Model Selection
-
-DetectLlama targets about `30 tokens/sec` by default, but the selector now prefers local models first. It checks:
-
-- available disk space in the llama.cpp model cache
-- total and available system RAM
-- NVIDIA VRAM when `nvidia-smi` is available
-- Apple Silicon unified memory on macOS
-- CPU core count and OS/architecture
-- local GGUF files in the llama.cpp cache, Hugging Face snapshots, and `DETECT_LLAMA_MODEL_DIRS`
-
-If only CPU is usable, DetectLlama falls back to the smallest practical quantization and warns that 30 tokens/sec may be
-unlikely.
-
-The built-in catalog contains only Llama 3 8B base models, from `Q4_*` through `FP16`. Instruct models are excluded
-because the bundled calibration was measured only for the base-model GGUF files. On Apple Silicon, the recommendation is
-intentionally more aggressive but keeps extra memory headroom: 8 GB machines prefer `Q4_*`, 16 GB machines can prefer
-`Q8_0`, and Max/Ultra machines can prefer `FP16`.
-
-Startup selection is local-first:
-
-- the previously loaded model wins if it still exists, is Llama 3 8B, is GGUF, and is 4-bit or larger
-- otherwise DetectLlama picks the best compatible local Llama 3 8B GGUF
-- otherwise it selects the best downloadable catalog model, but waits for the user to confirm the download
-
-The previous model is stored in `~/.config/detectllama/config.json` on every platform, but only after an analysis
-completes successfully. Set
-`DETECT_LLAMA_MODEL_DIRS=/path/to/models:/another/path` to add extra recursive search roots. Set
-`DETECT_LLAMA_CONFIG=/path/to/config.json` only when you need a custom config file for testing or scripting.
-
-You can inspect the launch command without opening the app:
+You can inspect the launch command without opening the TUI:
 
 ```bash
 DETECT_LLAMA_DRY_RUN=1 ./run.sh
 ```
 
-Optional advanced commands:
+GPU build and runtime examples:
 
 ```bash
 ./build.sh --gpu cuda --jobs 8
-./build.sh --gpu cpu
-./build.sh --llama-path ~/src/llama.cpp
-./build.sh --download-llama
+USE_GPU=1 ./run.sh
 ```
 
-DetectLlama uses the same model cache convention as llama.cpp. By default this is `~/Library/Caches/llama.cpp` on macOS,
-`$XDG_CACHE_HOME/llama.cpp` on Linux when set, or `~/.cache/llama.cpp` otherwise. Set `LLAMA_CACHE=/path/to/cache` to
-override the primary download cache. Discovery still checks both `LLAMA_CACHE` and the default llama.cpp cache, plus
-Hugging Face snapshots and any directory listed in `DETECT_LLAMA_MODEL_DIRS`.
+## Headless backend
 
-DetectLlama intentionally does not use Hugging Face tokens. Model downloads are anonymous and only support public,
-ungated Hugging Face repos.
+The build also creates `build/DetectLlamaBackend` for automation. It requires the exact local Q4_0 model path and one
+input source:
 
-## Understanding The Score
+```bash
+build/DetectLlamaBackend \
+  --model-path /path/to/Meta-Llama-3-8B.Q4_0.gguf \
+  --text "Text to analyze" --json
 
-DetectLlama reports a discrepancy score. In the Fast-DetectGPT convention, higher positive scores are more model-like,
-scores near zero have little directional signal, and negative scores are less model-like. A negative score is not proof
-of human authorship.
+build/DetectLlamaBackend \
+  --model-path /path/to/Meta-Llama-3-8B.Q4_0.gguf \
+  --file ./sample.txt --json
+```
 
-The score is not an AI probability. At the default context of 512, recognized catalog GGUF files use quantization-specific
-thresholds calibrated by `notebooks/benchmark.ipynb` on the pinned Ghostbuster essay dataset. A score at or above the
-threshold is reported as `AI-like`; a lower score is reported as `human-like`. The classification is experimental and
-dataset-specific.
+Context, batch size, model label, and quantization are deliberately not command-line options.
 
-| Quantization | Threshold |
-|---|---:|
-| Q4_K_S | -2.0881 |
-| Q4_0 | -2.041442 |
-| Q4_K_M | -2.2471 |
-| Q4_1 | -2.5062 |
-| Q5_K_S | -2.6293 |
-| Q5_0 | -2.4060 |
-| Q5_K_M | -2.4852 |
-| Q5_1 | -2.7678 |
-| Q6_K | -2.4378 |
-| Q8_0 | -2.5163 |
-| FP16 | -2.4794 |
+## Understanding the result
 
-Changing the context, model file, quantization, language, domain, or passage-length distribution can invalidate a
-threshold. DetectLlama therefore falls back to an uncalibrated raw score when it cannot identify the benchmarked GGUF or
-when the active context is not 512. `ai_probability` remains unavailable in both modes.
+DetectLlama implements the analytic Fast-DetectGPT discrepancy statistic. Higher scores are more model-like; lower scores
+are less model-like. With the fixed configuration, a score at or above `-1.550` is reported as `AI-like`, while a lower
+score is reported as `human-like`.
 
-Short passages are statistically less reliable. DetectLlama still scores them, but displays a low-confidence warning
-below 50 scored tokens. This is a usability guard, not a calibrated boundary.
+The threshold was calibrated in `notebooks/q4_q8_context_benchmark.ipynb` on the pinned Ghostbuster essay dataset using
+human text and AI text from Claude and GPT. It is experimental and dataset-specific: the classification is not proof of
+authorship and is not an AI probability. The JSON compatibility field `ai_probability` therefore remains `null`.
 
-Passages longer than the configured model context are not truncated or rejected. DetectLlama divides them into context
-windows, scores every text token exactly once, and retains up to 256 preceding tokens as context at each boundary. The
-final discrepancy is reconstructed by summing the log-likelihood, expected-log-likelihood, and variance terms across
-windows before normalization; window scores are never averaged. Texts that fit in one context keep the original
-single-pass behavior.
+Short passages are less reliable. DetectLlama reports a low-confidence warning below 50 scored tokens. Texts longer than
+128 tokens are processed in overlapping windows; every target token is scored once and the sufficient statistics are
+combined before normalization.
 
-## How The Algorithm Works
-
-DetectLlama follows the analytic Fast-DetectGPT approach. The original
-[Fast-DetectGPT paper](https://arxiv.org/abs/2310.05130) shows how to estimate whether text sits in high-curvature
-regions of a language model probability surface. AI-generated text often follows high-probability model patterns more
-closely, and this can be measured without generating many perturbed samples.
-
-The core metric is Conditional Probability Curvature:
+The metric is Conditional Probability Curvature:
 
 $$d(x, p_\theta) = \frac{\log p_\theta(x) - \tilde{\mu}}{\tilde{\sigma}}$$
 
-Where:
-
-- $x$ is the original input token
-- $\log p_\theta(x)$ is the log likelihood of the original token
-- $\tilde{\mu}$ is the expected log likelihood under the model distribution
-- $\tilde{\sigma}$ is the standard deviation of those log likelihoods
-
-Unlike DetectGPT-style methods that require extra sampling or perturbation passes, the analytic version evaluates the
-model distribution directly. DetectLlama implements this idea with llama.cpp so scoring can run on consumer hardware with
-a GGUF model.
-
-<p align="center">
-  <img src="https://francescopapini.com/assets/img/projects/detectgpt.png" alt="DetectGPT" width="400"/>
-</p>
+where the numerator compares the observed token log likelihood with its expectation under the model distribution and the
+denominator is the corresponding standard deviation.
 
 ## Credits
 
-- [Fast-DetectGPT](https://arxiv.org/abs/2310.05130) for the analytic detection method.
-- [Original Fast-DetectGPT implementation](https://github.com/baoguangsheng/fast-detect-gpt), which uses PyTorch.
-- [DetectGPT](https://arxiv.org/abs/2301.11305) for the earlier probability-curvature detection framing.
-- [llama.cpp](https://github.com/ggml-org/llama.cpp) for local GGUF inference.
+- [Fast-DetectGPT](https://arxiv.org/abs/2310.05130)
+- [Original Fast-DetectGPT implementation](https://github.com/baoguangsheng/fast-detect-gpt)
+- [DetectGPT](https://arxiv.org/abs/2301.11305)
+- [llama.cpp](https://github.com/ggml-org/llama.cpp)
