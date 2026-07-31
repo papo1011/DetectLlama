@@ -93,7 +93,7 @@ score is reported as `human-like`.
 
 The threshold was calibrated in `notebooks/q4_q8_context_benchmark.ipynb` on the pinned Ghostbuster essay dataset using
 human text and AI text from Claude and GPT. It is experimental and dataset-specific: the classification is not proof of
-authorship and is not an AI probability. The JSON compatibility field `ai_probability` therefore remains `null`.
+authorship and is not an AI probability.
 
 Short passages are less reliable. DetectLlama reports a low-confidence warning below 50 scored tokens. Texts longer than
 128 tokens are processed in overlapping windows; every target token is scored once and the sufficient statistics are
