@@ -75,7 +75,8 @@ std::string hardware_summary(const HardwareProfile & hardware) {
     return summary;
 }
 
-void apply_model_calibration(AnalysisResult & result, const ModelInfo & model) {
+void apply_model_calibration(AnalysisResult & result) {
+    const auto & model = detectllama_model();
     if (!result.ok || model.threshold_context <= 0 || model.calibration_id.empty() ||
         result.context_length != model.threshold_context) {
         return;
@@ -174,7 +175,7 @@ std::string slash_command_argument(const std::string & value, const std::string_
 }
 
 std::vector<std::string> slash_command_matches(const std::string & value) {
-    static const std::vector<std::string> commands = { "/models", "/path" };
+    static const std::vector<std::string> commands = { "/download", "/path" };
     const std::string                     trimmed  = lower_copy(trim_copy(value));
     if (trimmed.empty() || trimmed.front() != '/' || trimmed.find_first_of(" \t\r\n") != std::string::npos) {
         return {};
@@ -190,8 +191,8 @@ std::vector<std::string> slash_command_matches(const std::string & value) {
 }
 
 std::string command_description(const std::string & command) {
-    if (command == "/models") {
-        return "select or download a model";
+    if (command == "/download") {
+        return "download the fixed Q4_0 model";
     }
     if (command == "/path") {
         return "load a local .txt or .md file";
@@ -236,20 +237,18 @@ PromptParseResult parse_prompt_input(const std::string & raw_prompt) {
     const std::string trimmed_prompt = trim_copy(raw_prompt);
     if (trimmed_prompt.empty()) {
         result.action  = PromptAction::Empty;
-        result.message = "Write /models, /path <file>, or paste text before analyzing.";
+        result.message = "Write /download, /path <file>, or paste text before analyzing.";
         return result;
     }
 
-    if (starts_with_slash_command(trimmed_prompt, "/models")) {
-        const std::string arg = lower_copy(slash_command_argument(trimmed_prompt, "/models"));
-        result.action         = arg.empty() ? PromptAction::ModelPicker : PromptAction::ModelQuery;
-        result.model_query    = arg;
+    if (starts_with_slash_command(trimmed_prompt, "/download")) {
+        result.action = PromptAction::DownloadModel;
         return result;
     }
 
     if (trimmed_prompt.front() == '/' && !starts_with_slash_command(trimmed_prompt, "/path")) {
         result.action  = PromptAction::UnknownCommand;
-        result.message = "Unknown command. Available commands: /models and /path <file>.";
+        result.message = "Unknown command. Available commands: /download and /path <file>.";
         return result;
     }
 
@@ -358,108 +357,30 @@ void BackendSession::initialize() {
         snapshot_.interpretation   = "Waiting for model.";
     }
 
-    ModelDecision next_decision = build_model_decision(config_);
-    ModelStatus   model_to_load;
-    bool          should_load = false;
+    const ModelState state = inspect_model_state();
     {
         std::lock_guard<std::mutex> state_lock(state_mutex_);
-        snapshot_.decision             = std::move(next_decision);
-        snapshot_.decision_ready       = true;
-        snapshot_.selected_model_index = snapshot_.decision.recommended_index;
-        snapshot_.profile_summary      = hardware_summary(snapshot_.decision.hardware);
-
-        const auto & recommended = snapshot_.decision.models[snapshot_.decision.recommended_index];
-        if (recommended.cached) {
-            model_to_load = recommended;
-            should_load   = true;
-        } else {
-            snapshot_.model_status     = "Recommended model is not installed: " + model_label(recommended.info);
-            snapshot_.operation_status = "Use /models to select and download a quantization.";
-            snapshot_.interpretation   = snapshot_.decision.reason;
+        snapshot_.profile_summary = hardware_summary(state.hardware);
+        if (!state.cached) {
+            snapshot_.model_status     = model_label() + " is not installed.";
+            snapshot_.operation_status = "Use /download to install the fixed Q4_0 model (about 4.6 GiB).";
+            snapshot_.interpretation   = state.fits ? "The model fits this machine and is ready to download." :
+                                                      "The model may not fit the available memory or disk space.";
         }
     }
 
-    if (should_load) {
-        load_model_status_unlocked(model_to_load);
+    if (state.cached) {
+        load_model_unlocked(state.path);
     }
 }
 
-void BackendSession::refresh_model_cache_state_locked() {
-    namespace fs = std::filesystem;
-
-    for (auto & model : snapshot_.decision.models) {
-        if (model.catalog_model) {
-            model.path   = cached_model_path(model.info.repo, model.info.filename);
-            model.cached = !model.path.empty();
-        } else {
-            std::error_code error;
-            model.cached = !model.path.empty() && fs::exists(model.path, error);
-        }
-    }
-}
-
-bool BackendSession::refresh_model_cache_state() {
-    std::lock_guard<std::mutex> lock(state_mutex_);
-    if (!snapshot_.decision_ready) {
-        return false;
-    }
-    refresh_model_cache_state_locked();
-    return true;
-}
-
-ModelStatus BackendSession::selected_model_locked() const {
-    if (!snapshot_.decision_ready || snapshot_.decision.models.empty()) {
-        return {};
-    }
-
-    const int index =
-        std::clamp(snapshot_.selected_model_index, 0, static_cast<int>(snapshot_.decision.models.size()) - 1);
-    return snapshot_.decision.models[index];
-}
-
-bool BackendSession::select_model_index(const int index) {
-    std::lock_guard<std::mutex> lock(state_mutex_);
-    if (!snapshot_.decision_ready || snapshot_.decision.models.empty() || index < 0 ||
-        index >= static_cast<int>(snapshot_.decision.models.size())) {
-        return false;
-    }
-    snapshot_.selected_model_index = index;
-    snapshot_.operation_status =
-        "Selected " + model_label(snapshot_.decision.models[snapshot_.selected_model_index].info) + ".";
-    return true;
-}
-
-void BackendSession::select_previous_model() {
-    std::lock_guard<std::mutex> lock(state_mutex_);
-    if (!snapshot_.decision_ready || snapshot_.decision.models.empty()) {
-        return;
-    }
-    snapshot_.selected_model_index =
-        (snapshot_.selected_model_index + static_cast<int>(snapshot_.decision.models.size()) - 1) %
-        static_cast<int>(snapshot_.decision.models.size());
-    snapshot_.operation_status =
-        "Selected " + model_label(snapshot_.decision.models[snapshot_.selected_model_index].info) + ".";
-}
-
-void BackendSession::select_next_model() {
-    std::lock_guard<std::mutex> lock(state_mutex_);
-    if (!snapshot_.decision_ready || snapshot_.decision.models.empty()) {
-        return;
-    }
-    snapshot_.selected_model_index =
-        (snapshot_.selected_model_index + 1) % static_cast<int>(snapshot_.decision.models.size());
-    snapshot_.operation_status =
-        "Selected " + model_label(snapshot_.decision.models[snapshot_.selected_model_index].info) + ".";
-}
-
-bool BackendSession::load_model_status_unlocked(const ModelStatus & model) {
+bool BackendSession::load_model_unlocked(const std::string & path) {
     {
         std::lock_guard<std::mutex> state_lock(state_mutex_);
         snapshot_.model_ready = false;
         snapshot_.loaded_model_quant.clear();
         snapshot_.loaded_model_path.clear();
-        loaded_model_info_         = {};
-        snapshot_.model_status     = "Loading " + model_label(model.info) + " from local storage...";
+        snapshot_.model_status     = "Loading " + model_label() + " from local storage...";
         snapshot_.operation_status = "Model loading is running in the background.";
         snapshot_.interpretation   = "Waiting for model.";
     }
@@ -468,203 +389,71 @@ bool BackendSession::load_model_status_unlocked(const ModelStatus & model) {
     install_signal_handlers();
 
     auto       next = LlamaStatePtr(new LlamaState{}, LlamaStateDeleter{});
-    const bool ok   = setup_llama(*next, model.path, config_.use_gpu, config_.n_ctx, config_.n_batch);
+    const bool ok   = setup_llama(*next, path, config_.use_gpu);
     {
         std::lock_guard<std::mutex> state_lock(state_mutex_);
         if (ok) {
             llama_                       = next;
             snapshot_.model_ready        = true;
-            snapshot_.loaded_model_quant = model_label(model.info);
-            snapshot_.loaded_model_path  = model.path;
-            loaded_model_info_           = model.info;
-            snapshot_.model_status       = "Model ready: " + model_label(model.info);
+            snapshot_.loaded_model_quant = model_label();
+            snapshot_.loaded_model_path  = path;
+            snapshot_.model_status       = "Model ready: " + model_label();
             snapshot_.operation_status   = "Type / for commands, /path <file>, or paste text directly into the prompt.";
             snapshot_.interpretation     = "Ready to analyze files or pasted text.";
         } else {
-            snapshot_.model_status     = "Failed to load model: " + model.path;
-            snapshot_.operation_status = "Choose another cached model or download the recommended one.";
+            snapshot_.model_status     = "Failed to load model: " + path;
+            snapshot_.operation_status = "Check the Q4_0 GGUF and try again.";
             snapshot_.interpretation   = "No model is loaded.";
         }
     }
     return ok;
 }
 
-bool BackendSession::load_selected_model() {
+bool BackendSession::download_and_load_model() {
     std::lock_guard<std::mutex> operation_lock(operation_mutex_);
-    ModelStatus                 model;
-    {
-        std::lock_guard<std::mutex> state_lock(state_mutex_);
-        if (!snapshot_.decision_ready || snapshot_.decision.models.empty()) {
-            snapshot_.operation_status = "Model list is not ready yet.";
-            return false;
+    const std::string existing_path = cached_model_path();
+    if (!existing_path.empty()) {
+        {
+            std::lock_guard<std::mutex> state_lock(state_mutex_);
+            if (snapshot_.model_ready && snapshot_.loaded_model_path == existing_path) {
+                snapshot_.operation_status = model_label() + " is already downloaded and loaded.";
+                return true;
+            }
         }
-        refresh_model_cache_state_locked();
-        model = selected_model_locked();
-        if (!model.cached) {
-            snapshot_.operation_status =
-                "Selected model is not installed. Open /models and press Enter to download it.";
-            return false;
-        }
+        return load_model_unlocked(existing_path);
     }
 
-    return load_model_status_unlocked(model);
-}
-
-bool BackendSession::download_selected_model_unlocked() {
-    ModelStatus model;
     {
         std::lock_guard<std::mutex> state_lock(state_mutex_);
-        if (!snapshot_.decision_ready || snapshot_.decision.models.empty()) {
-            snapshot_.operation_status = "Model list is not ready yet.";
-            return false;
-        }
-        model = selected_model_locked();
-        if (!model.downloadable) {
-            snapshot_.operation_status =
-                "This llama.cpp cache model is local-only and cannot be downloaded by DetectLlama.";
-            return false;
-        }
         snapshot_.model_ready      = false;
-        snapshot_.model_status     = "Downloading " + model_label(model.info) + " anonymously from Hugging Face...";
+        snapshot_.model_status     = "Downloading " + model_label() + " anonymously from Hugging Face...";
         snapshot_.operation_status = "Download is running. The terminal stays inside DetectLlama.";
         snapshot_.interpretation   = "Waiting for download.";
     }
 
     std::string output_path;
     std::string error;
-    const bool  ok         = download_public_model(model.info, output_path, error);
-    ModelStatus downloaded = model;
-    downloaded.path        = output_path;
-    downloaded.cached      = ok;
-    {
+    if (!download_model(output_path, error)) {
         std::lock_guard<std::mutex> state_lock(state_mutex_);
-        refresh_model_cache_state_locked();
-        if (!ok) {
-            snapshot_.model_status     = error;
-            snapshot_.operation_status = "Download failed. Check network access and that the model repo is public.";
-            snapshot_.interpretation   = "No model is loaded.";
-        }
-    }
-
-    if (!ok) {
-        return false;
-    }
-    return load_model_status_unlocked(downloaded);
-}
-
-bool BackendSession::activate_selected_model() {
-    std::lock_guard<std::mutex> operation_lock(operation_mutex_);
-    ModelStatus                 model;
-    bool                        cached = false;
-    {
-        std::lock_guard<std::mutex> state_lock(state_mutex_);
-        if (!snapshot_.decision_ready || snapshot_.decision.models.empty()) {
-            snapshot_.operation_status = "Model list is not ready yet.";
-            return false;
-        }
-        refresh_model_cache_state_locked();
-        model  = selected_model_locked();
-        cached = model.cached;
-        if (!cached && !model.downloadable) {
-            snapshot_.operation_status = "That llama.cpp cache model is no longer available on disk.";
-            return false;
-        }
-        snapshot_.operation_status = cached ? "Loading " + model_label(model.info) + " from cache." :
-                                              "Downloading " + model_label(model.info) + " anonymously.";
-    }
-
-    if (cached) {
-        return load_model_status_unlocked(model);
-    }
-    return download_selected_model_unlocked();
-}
-
-bool BackendSession::load_model_by_query(const std::string & query, const bool download_if_missing) {
-    std::lock_guard<std::mutex> operation_lock(operation_mutex_);
-    ModelStatus                 model;
-    bool                        should_download = false;
-    {
-        std::lock_guard<std::mutex> state_lock(state_mutex_);
-        if (!snapshot_.decision_ready || snapshot_.decision.models.empty()) {
-            snapshot_.operation_status = "Model list is not ready yet.";
-            return false;
-        }
-
-        refresh_model_cache_state_locked();
-        int               next_index = -1;
-        const std::string needle     = lower_copy(query);
-        for (int index = 0; index < static_cast<int>(snapshot_.decision.models.size()); ++index) {
-            const auto & candidate = snapshot_.decision.models[index];
-            if (lower_copy(model_label(candidate.info)).find(needle) != std::string::npos ||
-                lower_copy(candidate.info.family).find(needle) != std::string::npos ||
-                lower_copy(candidate.info.quant).find(needle) != std::string::npos ||
-                lower_copy(candidate.info.repo).find(needle) != std::string::npos ||
-                lower_copy(candidate.info.filename).find(needle) != std::string::npos ||
-                std::to_string(candidate.info.rank) == needle) {
-                next_index = index;
-                break;
-            }
-        }
-        if (next_index < 0) {
-            snapshot_.operation_status = "Unknown model. Use /models to open the selector or /models <quant>.";
-            return false;
-        }
-
-        snapshot_.selected_model_index = next_index;
-        model                          = snapshot_.decision.models[snapshot_.selected_model_index];
-        snapshot_.operation_status     = "Selected " + model_label(model.info) + ".";
-        if (model.cached) {
-            snapshot_.operation_status += " Loading from cache.";
-        } else if (model.downloadable && download_if_missing) {
-            snapshot_.model_status = "Selected model is not installed: " + model_label(model.info);
-            snapshot_.operation_status += " Downloading anonymously.";
-            snapshot_.interpretation = snapshot_.decision.reason;
-            should_download          = true;
-        } else if (model.downloadable) {
-            snapshot_.operation_status += " Model is not installed.";
-            return false;
-        } else {
-            snapshot_.operation_status = "That llama.cpp cache model is no longer available on disk.";
-            return false;
-        }
-    }
-
-    if (should_download) {
-        return download_selected_model_unlocked();
-    }
-    return load_model_status_unlocked(model);
-}
-
-bool BackendSession::load_model_path(const std::string & path, const std::string & label) {
-    std::lock_guard<std::mutex> operation_lock(operation_mutex_);
-    namespace fs = std::filesystem;
-
-    std::error_code error;
-    if (!fs::exists(path, error) || !fs::is_regular_file(path, error)) {
-        std::lock_guard<std::mutex> state_lock(state_mutex_);
-        snapshot_.model_status     = "Failed to load model: " + path;
-        snapshot_.operation_status = "Model path must point to an existing regular GGUF file.";
+        snapshot_.model_status     = error;
+        snapshot_.operation_status = "Download failed. Check network access and available disk space.";
         snapshot_.interpretation   = "No model is loaded.";
         return false;
     }
+    return load_model_unlocked(output_path);
+}
 
-    ModelStatus model;
-    if (!describe_local_model_path(path, model.info)) {
+bool BackendSession::load_model_path(const std::string & path) {
+    std::lock_guard<std::mutex> operation_lock(operation_mutex_);
+    if (!is_detectllama_model_path(path)) {
         std::lock_guard<std::mutex> state_lock(state_mutex_);
         snapshot_.model_status = "Failed to load model: " + path;
         snapshot_.operation_status =
-            "Model path must be a recognizable Llama 3 8B base GGUF with 4-bit quantization or higher.";
+            "Model path must point to Meta-Llama-3-8B.Q4_0.gguf, the only supported GGUF.";
         snapshot_.interpretation = "No model is loaded.";
         return false;
     }
-    if (!label.empty() && model.info.calibration_id.empty()) {
-        model.info.quant = label;
-    }
-    model.path          = path;
-    model.cached        = true;
-    model.downloadable  = false;
-    model.catalog_model = false;
-    return load_model_status_unlocked(model);
+    return load_model_unlocked(path);
 }
 
 void BackendSession::apply_analysis_result_locked(const AnalysisResult & result, const std::string & source_label) {
@@ -695,7 +484,7 @@ void BackendSession::apply_analysis_result_locked(const AnalysisResult & result,
 }
 
 // Captures the loaded model under the state lock so inference can run without
-// holding UI state, while preserving the exact model metadata for last-used.
+// holding UI state.
 bool BackendSession::prepare_analysis_locked(AnalysisResult &      result,
                                              ActiveModelSnapshot & model,
                                              const std::string &   source_label,
@@ -718,18 +507,7 @@ bool BackendSession::prepare_analysis_locked(AnalysisResult &      result,
     snapshot_.speed            = "measuring...";
 
     model.llama = llama_;
-    model.info  = loaded_model_info_;
-    model.path  = snapshot_.loaded_model_path;
     return true;
-}
-
-void BackendSession::save_last_used_after_success(const AnalysisResult & result, const ActiveModelSnapshot & model) {
-    if (!result.ok || model.path.empty()) {
-        return;
-    }
-
-    std::string save_error;
-    save_last_used_model(model.info, model.path, save_error);
 }
 
 AnalysisResult BackendSession::analyze_text(const std::string & text) {
@@ -744,13 +522,12 @@ AnalysisResult BackendSession::analyze_text(const std::string & text) {
     }
 
     install_signal_handlers();
-    result = analyze_text_detailed(*model.llama, text, config_.n_ctx);
-    apply_model_calibration(result, model.info);
+    result = analyze_text_detailed(*model.llama, text);
+    apply_model_calibration(result);
     {
         std::lock_guard<std::mutex> state_lock(state_mutex_);
         apply_analysis_result_locked(result, "Pasted text");
     }
-    save_last_used_after_success(result, model);
     return result;
 }
 
@@ -778,15 +555,14 @@ AnalysisResult BackendSession::analyze_file(const std::string & path) {
         result.error = "Failed to read input file.";
     } else {
         install_signal_handlers();
-        result = analyze_text_detailed(*model.llama, input_text, config_.n_ctx);
-        apply_model_calibration(result, model.info);
+        result = analyze_text_detailed(*model.llama, input_text);
+        apply_model_calibration(result);
     }
 
     {
         std::lock_guard<std::mutex> state_lock(state_mutex_);
         apply_analysis_result_locked(result, source_label);
     }
-    save_last_used_after_success(result, model);
     return result;
 }
 

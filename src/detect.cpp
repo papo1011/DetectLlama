@@ -121,7 +121,7 @@ double compute_discrepancy(const std::vector<float *> &     all_logits,
     return discrepancy_from_sums(sums);
 }
 
-AnalysisResult analyze_text_detailed(const LlamaState & llama, const std::string & text, const int n_ctx) {
+AnalysisResult analyze_text_detailed(const LlamaState & llama, const std::string & text) {
     AnalysisResult result;
 
     // A byte-sized buffer plus special-token headroom is a safe first attempt;
@@ -148,7 +148,7 @@ AnalysisResult analyze_text_detailed(const LlamaState & llama, const std::string
     }
 
     const int context_capacity =
-        std::min({ n_ctx, static_cast<int>(llama_n_ctx(llama.ctx)), static_cast<int>(llama_n_batch(llama.ctx)) });
+        std::min(static_cast<int>(llama_n_ctx(llama.ctx)), static_cast<int>(llama_n_batch(llama.ctx)));
     result.context_length = context_capacity;
     if (context_capacity < 2 || (n_tokens > context_capacity && context_capacity < 3)) {
         result.error = "The model context and batch size are too small for windowed scoring.";
@@ -253,8 +253,8 @@ AnalysisResult analyze_text_detailed(const LlamaState & llama, const std::string
     return result;
 }
 
-double analyze_text(const LlamaState & llama, const std::string & text, const int n_ctx) {
-    const auto result = analyze_text_detailed(llama, text, n_ctx);
+double analyze_text(const LlamaState & llama, const std::string & text) {
+    const auto result = analyze_text_detailed(llama, text);
     if (!result.ok) {
         std::cerr << result.error << std::endl;
         return 0.0;

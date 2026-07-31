@@ -37,9 +37,6 @@ int main(const int argc, char * argv[]) {
 
     program.add_argument("--verbose").help("Verbosity level").default_value(false).implicit_value(true);
     program.add_argument("--gpu").help("Enable GPU acceleration").default_value(false).implicit_value(true);
-    program.add_argument("--target-tps").help("Target tokens/sec for automatic quant selection").default_value(30).scan<'i', int>();
-    program.add_argument("-c", "--ctx").help("Size of the prompt context").default_value(512).scan<'i', int>();
-    program.add_argument("-b", "--batch").help("Logical max batch size").default_value(2048).scan<'i', int>();
 
     try {
         program.parse_args(argc, argv);
@@ -57,9 +54,6 @@ int main(const int argc, char * argv[]) {
 
     AppConfig config;
     config.use_gpu = program.get<bool>("--gpu");
-    config.target_tokens_per_sec = program.get<int>("--target-tps");
-    config.n_ctx = program.get<int>("--ctx");
-    config.n_batch = program.get<int>("--batch");
 
     return run_tui(config);
 }

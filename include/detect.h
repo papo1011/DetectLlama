@@ -36,6 +36,6 @@ double compute_discrepancy(const std::vector<float *> &     all_logits,
                            const std::vector<llama_token> & tokens,
                            int                              vocab_size);
 
-AnalysisResult analyze_text_detailed(const LlamaState & llama, const std::string & text, int n_ctx);
+AnalysisResult analyze_text_detailed(const LlamaState & llama, const std::string & text);
 
-double analyze_text(const LlamaState & llama, const std::string & text, int n_ctx);
+double analyze_text(const LlamaState & llama, const std::string & text);

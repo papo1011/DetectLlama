@@ -1,6 +1,7 @@
 #include "../include/llama_state.h"
+#include "../include/app_config.h"
 
-bool setup_llama(LlamaState & llama, const std::string & model_path, bool gpu, int n_ctx, int n_batch) {
+bool setup_llama(LlamaState & llama, const std::string & model_path, bool gpu) {
     auto mparams = llama_model_default_params();
 
     if (gpu) {
@@ -17,8 +18,8 @@ bool setup_llama(LlamaState & llama, const std::string & model_path, bool gpu, i
     llama.vocab = llama_model_get_vocab(llama.model);
 
     auto cparams       = llama_context_default_params();
-    cparams.n_ctx      = n_ctx;
-    cparams.n_batch    = n_batch;
+    cparams.n_ctx      = kContextLength;
+    cparams.n_batch    = kBatchSize;
     cparams.embeddings = true;
 
     llama.ctx = llama_init_from_model(llama.model, cparams);

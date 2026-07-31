@@ -154,11 +154,8 @@ int main(const int argc, char * argv[]) {
     program.add_argument("--json").help("Print a JSON result").default_value(false).implicit_value(true);
     program.add_argument("--stdin").help("Read input text from stdin").default_value(false).implicit_value(true);
     program.add_argument("--model-path").help("Local GGUF model path").default_value(std::string(""));
-    program.add_argument("--model-label").help("Label to report for --model-path").default_value(std::string("local"));
     program.add_argument("--text").help("Inline text to analyze").default_value(std::string(""));
     program.add_argument("--file").help("Path to a .txt or .md file to analyze").default_value(std::string(""));
-    program.add_argument("-c", "--ctx").help("Size of the prompt context").default_value(512).scan<'i', int>();
-    program.add_argument("-b", "--batch").help("Logical max batch size").default_value(2048).scan<'i', int>();
 
     try {
         program.parse_args(argc, argv);
@@ -201,11 +198,9 @@ int main(const int argc, char * argv[]) {
 
     AppConfig config;
     config.use_gpu = program.get<bool>("--gpu");
-    config.n_ctx   = program.get<int>("--ctx");
-    config.n_batch = program.get<int>("--batch");
 
     BackendSession backend(config);
-    if (!backend.load_model_path(model_path, program.get<std::string>("--model-label"))) {
+    if (!backend.load_model_path(model_path)) {
         const auto snapshot = backend.snapshot();
         if (program.get<bool>("--json")) {
             AnalysisResult result;

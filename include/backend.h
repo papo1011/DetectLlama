@@ -24,8 +24,7 @@ struct DetectionInput {
 
 enum class PromptAction {
     Empty,
-    ModelPicker,
-    ModelQuery,
+    DownloadModel,
     LoadFile,
     Analyze,
     UnknownCommand,
@@ -34,14 +33,10 @@ enum class PromptAction {
 struct PromptParseResult {
     PromptAction   action = PromptAction::Empty;
     DetectionInput input;
-    std::string    model_query;
     std::string    message;
 };
 
 struct BackendSnapshot {
-    ModelDecision decision;
-    bool          decision_ready       = false;
-    int           selected_model_index = 0;
     std::string   loaded_model_quant;
     std::string   loaded_model_path;
     std::string   model_status     = "Profiling this machine and checking the llama.cpp cache...";
@@ -89,15 +84,8 @@ class BackendSession {
     void set_operation_status(const std::string & status);
     void clear_analysis();
 
-    bool refresh_model_cache_state();
-    bool select_model_index(int index);
-    void select_previous_model();
-    void select_next_model();
-
-    bool load_selected_model();
-    bool activate_selected_model();
-    bool load_model_by_query(const std::string & query, bool download_if_missing);
-    bool load_model_path(const std::string & path, const std::string & label);
+    bool download_and_load_model();
+    bool load_model_path(const std::string & path);
 
     AnalysisResult analyze_text(const std::string & text);
     AnalysisResult analyze_file(const std::string & path);
@@ -112,21 +100,15 @@ class BackendSession {
 
     struct ActiveModelSnapshot {
         LlamaStatePtr llama;
-        ModelInfo     info;
-        std::string   path;
     };
 
     void        ensure_backend_initialized();
-    bool        load_model_status_unlocked(const ModelStatus & model);
-    bool        download_selected_model_unlocked();
-    ModelStatus selected_model_locked() const;
-    void        refresh_model_cache_state_locked();
+    bool        load_model_unlocked(const std::string & path);
     bool        prepare_analysis_locked(AnalysisResult &      result,
                                         ActiveModelSnapshot & model,
                                         const std::string &   source_label,
                                         const std::string &   operation_status);
     void        apply_analysis_result_locked(const AnalysisResult & result, const std::string & source_label);
-    void        save_last_used_after_success(const AnalysisResult & result, const ActiveModelSnapshot & model);
     void        reset_analysis_fields_locked();
 
     AppConfig config_;
@@ -136,6 +118,5 @@ class BackendSession {
 
     BackendSnapshot snapshot_;
     LlamaStatePtr   llama_;
-    ModelInfo       loaded_model_info_;
     bool            backend_initialized_ = false;
 };

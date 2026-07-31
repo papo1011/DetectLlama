@@ -1,8 +1,11 @@
 #pragma once
 
+inline constexpr int kContextLength = 128;
+inline constexpr int kBatchSize     = 128;
+inline constexpr double kDetectionThreshold = -1.550;
+inline constexpr const char * kCalibrationId =
+    "ghostbuster-953b44b7-seed20260731-ctx128-q4_0-claude-gpt";
+
 struct AppConfig {
-    int         n_ctx = 512;
-    int         n_batch = 2048;
-    int         target_tokens_per_sec = 30;
-    bool        use_gpu = false;
+    bool use_gpu = false;
 };

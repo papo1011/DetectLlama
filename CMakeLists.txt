@@ -140,7 +140,6 @@ add_library(detectllama_core
         src/io.cpp
         src/llama_logging.cpp
         src/llama_state.cpp
-        src/model_catalog.cpp
         src/model_manager.cpp
         src/signals.cpp
         include/app_config.h
@@ -151,7 +150,6 @@ add_library(detectllama_core
         include/io.h
         include/llama_logging.h
         include/llama_state.h
-        include/model_catalog.h
         include/model_manager.h
 )
 

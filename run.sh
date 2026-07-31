@@ -6,17 +6,14 @@ BUILD_DIR="${BUILD_DIR:-$ROOT_DIR/build}"
 EXE_NAME="DetectLlama"
 
 USE_GPU="${USE_GPU:-auto}"
-N_CTX="${N_CTX:-512}"
-N_BATCH="${N_BATCH:-2048}"
 DETECT_LLAMA_DRY_RUN="${DETECT_LLAMA_DRY_RUN:-0}"
 
 usage() {
     cat <<EOF
 Usage: $0
 
-Model selection is automatic. If the selected GGUF is not already in the
-llama.cpp cache, the TUI downloads it anonymously from the public Hugging Face
-resolve URL.
+DetectLlama uses only Llama 3 8B Q4_0 with a fixed 128-token context. If the
+GGUF is missing, use /download in the TUI to install it anonymously.
 EOF
 }
 
@@ -60,7 +57,7 @@ if [ "$USE_GPU_LC" = "1" ] || [ "$USE_GPU_LC" = "true" ] || { [ "$USE_GPU_LC" = 
     GPU_ARGS=(--gpu)
 fi
 
-CMD=("$EXECUTABLE" --target-tps "${TARGET_TOKENS_PER_SEC:-30}" -c "$N_CTX" -b "$N_BATCH" "${GPU_ARGS[@]}")
+CMD=("$EXECUTABLE" "${GPU_ARGS[@]}")
 
 if [ "$DETECT_LLAMA_DRY_RUN" = "1" ]; then
     printf "Dry run command:"
