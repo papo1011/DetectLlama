@@ -121,7 +121,9 @@ double compute_discrepancy(const std::vector<float *> &     all_logits,
     return discrepancy_from_sums(sums);
 }
 
-AnalysisResult analyze_text_detailed(const LlamaState & llama, const std::string & text) {
+AnalysisResult analyze_text_detailed(const LlamaState &              llama,
+                                     const std::string &             text,
+                                     const AnalysisProgressCallback & on_progress) {
     AnalysisResult result;
 
     // A byte-sized buffer plus special-token headroom is a safe first attempt;
@@ -162,6 +164,9 @@ AnalysisResult analyze_text_detailed(const LlamaState & llama, const std::string
     const bool        has_bos     = bos_token != LLAMA_TOKEN_NULL && tokens.front() == bos_token;
 
     const auto started_at = std::chrono::steady_clock::now();
+    if (on_progress) {
+        on_progress({ 0, result.tokens, 0.0, 0.0 });
+    }
     DiscrepancySums sums;
     int             target_start = 1;
     while (target_start < n_tokens) {
@@ -224,6 +229,15 @@ AnalysisResult analyze_text_detailed(const LlamaState & llama, const std::string
         llama_batch_free(batch);
         ++result.windows;
         target_start = window_end;
+        if (on_progress) {
+            const double elapsed =
+                std::chrono::duration<double>(std::chrono::steady_clock::now() - started_at).count();
+            const int completed = target_start - 1;
+            on_progress({ completed,
+                          result.tokens,
+                          elapsed,
+                          elapsed > 0.0 ? static_cast<double>(completed) / elapsed : 0.0 });
+        }
     }
 
     const double score    = discrepancy_from_sums(sums);
@@ -242,13 +256,6 @@ AnalysisResult analyze_text_detailed(const LlamaState & llama, const std::string
     if (result.tokens < kRecommendedMinScoredTokens) {
         result.warning = "Low confidence: short text (" + std::to_string(result.tokens) + " scored tokens; at least " +
                          std::to_string(kRecommendedMinScoredTokens) + " recommended).";
-    }
-    if (result.windows > 1) {
-        if (!result.warning.empty()) {
-            result.warning += " ";
-        }
-        result.warning += "Windowed analysis: " + std::to_string(result.windows) + " windows with up to " +
-                          std::to_string(result.context_overlap) + " preceding context tokens.";
     }
     return result;
 }

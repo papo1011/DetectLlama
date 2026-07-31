@@ -2,6 +2,7 @@
 #include "./llama_state.h"
 #include "llama.h"
 
+#include <functional>
 #include <string>
 #include <vector>
 
@@ -30,12 +31,23 @@ struct AnalysisResult {
     std::string error;
 };
 
+struct AnalysisProgress {
+    int    completed_tokens  = 0;
+    int    total_tokens      = 0;
+    double elapsed_seconds   = 0.0;
+    double tokens_per_second = 0.0;
+};
+
+using AnalysisProgressCallback = std::function<void(const AnalysisProgress &)>;
+
 TokenStats compute_token_stats(int vocab_size, int token_id, const float * logits, std::vector<double> & buffer);
 
 double compute_discrepancy(const std::vector<float *> &     all_logits,
                            const std::vector<llama_token> & tokens,
                            int                              vocab_size);
 
-AnalysisResult analyze_text_detailed(const LlamaState & llama, const std::string & text);
+AnalysisResult analyze_text_detailed(const LlamaState &             llama,
+                                     const std::string &            text,
+                                     const AnalysisProgressCallback & on_progress = {});
 
 double analyze_text(const LlamaState & llama, const std::string & text);

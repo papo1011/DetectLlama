@@ -96,16 +96,6 @@ std::string format_fixed(const double value, const int precision) {
     return out.str();
 }
 
-std::string score_direction(const double score) {
-    if (score > 0.0) {
-        return "model-like ↑";
-    }
-    if (score < 0.0) {
-        return "less model-like ↓";
-    }
-    return "neutral";
-}
-
 std::string interpret_score(const double score, const std::string & warning) {
     std::string interpretation;
     if (score > 0.0) {
@@ -129,7 +119,6 @@ std::string interpret_result(const AnalysisResult & result) {
 
     std::string interpretation =
         result.predicted_ai ? "Above the calibrated threshold: AI-like." : "Below the calibrated threshold: human-like.";
-    interpretation += " Experimental Ghostbuster essay calibration; not an AI probability.";
     if (!result.warning.empty()) {
         return result.warning + " " + interpretation;
     }
@@ -237,7 +226,7 @@ PromptParseResult parse_prompt_input(const std::string & raw_prompt) {
     const std::string trimmed_prompt = trim_copy(raw_prompt);
     if (trimmed_prompt.empty()) {
         result.action  = PromptAction::Empty;
-        result.message = "Write /download, /path <file>, or paste text before analyzing.";
+        result.message = "Enter some text, use /path <file>, or use /download.";
         return result;
     }
 
@@ -328,15 +317,15 @@ void BackendSession::clear_analysis() {
 
 void BackendSession::reset_analysis_fields_locked() {
     snapshot_.operation_status = snapshot_.model_ready ?
-                                     "Type / for commands, /path <file>, or paste text directly into the prompt." :
+                                     "Ready." :
                                      "Waiting for model.";
     snapshot_.score_text       = "-";
-    snapshot_.score_direction  = "-";
     snapshot_.classification   = "-";
-    snapshot_.threshold_text   = "-";
+    snapshot_.threshold_text   = format_fixed(kDetectionThreshold, 4);
     snapshot_.input_source     = "-";
-    snapshot_.interpretation = snapshot_.model_ready ? "Ready to analyze files or pasted text." : "Waiting for model.";
+    snapshot_.interpretation = snapshot_.model_ready ? "Ready to analyze." : "Waiting for model.";
     snapshot_.token_count    = "-";
+    snapshot_.progress       = "-";
     snapshot_.elapsed        = "-";
     snapshot_.speed          = "-";
 }
@@ -353,7 +342,7 @@ void BackendSession::initialize() {
     {
         std::lock_guard<std::mutex> state_lock(state_mutex_);
         snapshot_.model_status     = "Profiling this machine and checking the llama.cpp cache...";
-        snapshot_.operation_status = "Type / for commands, /path <file>, or paste text to detect.";
+        snapshot_.operation_status = "Ready.";
         snapshot_.interpretation   = "Waiting for model.";
     }
 
@@ -398,8 +387,8 @@ bool BackendSession::load_model_unlocked(const std::string & path) {
             snapshot_.loaded_model_quant = model_label();
             snapshot_.loaded_model_path  = path;
             snapshot_.model_status       = "Model ready: " + model_label();
-            snapshot_.operation_status   = "Type / for commands, /path <file>, or paste text directly into the prompt.";
-            snapshot_.interpretation     = "Ready to analyze files or pasted text.";
+            snapshot_.operation_status   = "Ready.";
+            snapshot_.interpretation     = "Ready to analyze.";
         } else {
             snapshot_.model_status     = "Failed to load model: " + path;
             snapshot_.operation_status = "Check the Q4_0 GGUF and try again.";
@@ -427,7 +416,7 @@ bool BackendSession::download_and_load_model() {
         std::lock_guard<std::mutex> state_lock(state_mutex_);
         snapshot_.model_ready      = false;
         snapshot_.model_status     = "Downloading " + model_label() + " anonymously from Hugging Face...";
-        snapshot_.operation_status = "Download is running. The terminal stays inside DetectLlama.";
+        snapshot_.operation_status = "Download is running.";
         snapshot_.interpretation   = "Waiting for download.";
     }
 
@@ -461,22 +450,19 @@ void BackendSession::apply_analysis_result_locked(const AnalysisResult & result,
         snapshot_.operation_status = result.error;
         snapshot_.interpretation   = "No score produced.";
         snapshot_.score_text       = "-";
-        snapshot_.score_direction  = "-";
         snapshot_.classification   = "-";
-        snapshot_.threshold_text   = "-";
         snapshot_.token_count      = std::to_string(result.tokens);
+        snapshot_.progress         = "-";
         snapshot_.elapsed          = "-";
         snapshot_.speed            = "-";
     } else {
-        snapshot_.operation_status = result.windows > 1 ?
-                                         "Analysis complete across " + std::to_string(result.windows) + " context windows." :
-                                         "Analysis complete.";
+        snapshot_.operation_status = "Analysis complete.";
         snapshot_.score_text       = format_fixed(result.discrepancy, 4);
-        snapshot_.score_direction  = score_direction(result.discrepancy);
         snapshot_.classification   = result.calibrated ? (result.predicted_ai ? "AI-like" : "human-like") : "uncalibrated";
         snapshot_.threshold_text   = result.calibrated ? format_fixed(result.threshold, 4) : "-";
         snapshot_.interpretation   = interpret_result(result);
         snapshot_.token_count      = std::to_string(result.tokens);
+        snapshot_.progress         = "100%";
         snapshot_.elapsed          = format_fixed(result.elapsed_seconds, 2) + " s";
         snapshot_.speed            = format_fixed(result.tokens_per_second, 2) + " tokens/sec";
     }
@@ -498,16 +484,29 @@ bool BackendSession::prepare_analysis_locked(AnalysisResult &      result,
     snapshot_.operation_status = operation_status;
     snapshot_.input_source     = source_label;
     snapshot_.score_text       = "-";
-    snapshot_.score_direction  = "-";
     snapshot_.classification   = "-";
-    snapshot_.threshold_text   = "-";
     snapshot_.interpretation   = "Running inference and scoring.";
     snapshot_.token_count      = "-";
+    snapshot_.progress         = "0%";
     snapshot_.elapsed          = "-";
     snapshot_.speed            = "measuring...";
 
     model.llama = llama_;
     return true;
+}
+
+void BackendSession::apply_analysis_progress(const AnalysisProgress & progress) {
+    std::lock_guard<std::mutex> state_lock(state_mutex_);
+    const int percent = progress.total_tokens > 0 ?
+                            std::clamp(progress.completed_tokens * 100 / progress.total_tokens, 0, 100) :
+                            0;
+    snapshot_.progress = std::to_string(percent) + "%";
+    snapshot_.token_count = std::to_string(progress.completed_tokens) + " / " +
+                            std::to_string(progress.total_tokens);
+    snapshot_.elapsed = format_fixed(progress.elapsed_seconds, 2) + " s";
+    snapshot_.speed = progress.completed_tokens > 0 ?
+                          format_fixed(progress.tokens_per_second, 2) + " tokens/sec" :
+                          "measuring...";
 }
 
 AnalysisResult BackendSession::analyze_text(const std::string & text) {
@@ -516,13 +515,15 @@ AnalysisResult BackendSession::analyze_text(const std::string & text) {
     ActiveModelSnapshot         model;
     {
         std::lock_guard<std::mutex> state_lock(state_mutex_);
-        if (!prepare_analysis_locked(result, model, "Pasted text", "Running detection on pasted text...")) {
+        if (!prepare_analysis_locked(result, model, "Pasted text", "Analyzing...")) {
             return result;
         }
     }
 
     install_signal_handlers();
-    result = analyze_text_detailed(*model.llama, text);
+    result = analyze_text_detailed(*model.llama, text, [this](const AnalysisProgress & progress) {
+        apply_analysis_progress(progress);
+    });
     apply_model_calibration(result);
     {
         std::lock_guard<std::mutex> state_lock(state_mutex_);
@@ -555,7 +556,9 @@ AnalysisResult BackendSession::analyze_file(const std::string & path) {
         result.error = "Failed to read input file.";
     } else {
         install_signal_handlers();
-        result = analyze_text_detailed(*model.llama, input_text);
+        result = analyze_text_detailed(*model.llama, input_text, [this](const AnalysisProgress & progress) {
+            apply_analysis_progress(progress);
+        });
         apply_model_calibration(result);
     }
 

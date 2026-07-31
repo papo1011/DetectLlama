@@ -276,14 +276,14 @@ ftxui::Element session_rail(const BackendSnapshot & snapshot, const bool model_b
                text("SESSION") | bold | color(violet_color()),
                text(""),
                paragraph(snapshot.interpretation) | bold,
-               text(snapshot.input_source) | dim,
+               text(snapshot.input_source == "Pasted text" ? "" : snapshot.input_source) | dim,
                text(""),
-               metric("direction", snapshot.score_direction, true),
                metric("classification", snapshot.classification, true),
                separator(),
                metric("score", snapshot.score_text),
                metric("threshold", snapshot.threshold_text),
                metric("tokens", snapshot.token_count),
+               metric("progress", snapshot.progress),
                metric("speed", snapshot.speed),
                metric("time", snapshot.elapsed),
                filler(),
@@ -395,6 +395,7 @@ int run_tui(const AppConfig & config) {
     bool             path_modal_open   = false;
     int              slash_menu_index  = 0;
     std::atomic_int  animation_frame   = 0;
+    std::chrono::steady_clock::time_point analysis_started_at;
 
     auto screen = ScreenInteractive::Fullscreen();
     auto redraw = [&] {
@@ -448,7 +449,8 @@ int run_tui(const AppConfig & config) {
             return false;
         }
 
-        analysis_busy = true;
+        analysis_started_at = std::chrono::steady_clock::now();
+        analysis_busy       = true;
 
         join_if_running(analysis_worker);
         analysis_worker = std::thread([&, input_value] {
@@ -640,8 +642,13 @@ int run_tui(const AppConfig & config) {
     });
 
     auto main_renderer = Renderer(main_container, [&] {
-        const BackendSnapshot snapshot = backend.snapshot();
-        const auto            commands = slash_menu_open ? slash_command_matches(prompt) : std::vector<std::string>{};
+        BackendSnapshot snapshot = backend.snapshot();
+        if (analysis_busy.load()) {
+            const double elapsed =
+                std::chrono::duration<double>(std::chrono::steady_clock::now() - analysis_started_at).count();
+            snapshot.elapsed = format_fixed(elapsed, 1) + " s";
+        }
+        const auto commands = slash_menu_open ? slash_command_matches(prompt) : std::vector<std::string>{};
         return main_view(snapshot, wrapped_input->Render(), buttons->Render(), commands, slash_menu_index,
                          model_busy.load(), animation_frame.load(), path_modal_open);
     });
@@ -705,7 +712,7 @@ int run_tui(const AppConfig & config) {
                 screen.ExitLoopClosure()();
                 break;
             }
-            const bool should_animate = model_busy.load();
+            const bool should_animate = model_busy.load() || analysis_busy.load();
             if (should_animate) {
                 ++animation_frame;
                 redraw();

@@ -40,14 +40,14 @@ struct BackendSnapshot {
     std::string   loaded_model_quant;
     std::string   loaded_model_path;
     std::string   model_status     = "Profiling this machine and checking the llama.cpp cache...";
-    std::string   operation_status = "Type / for commands, /path <file>, or paste text to detect.";
+    std::string   operation_status = "Ready.";
     std::string   input_source     = "-";
     std::string   score_text       = "-";
-    std::string   score_direction  = "-";
     std::string   classification   = "-";
-    std::string   threshold_text   = "-";
+    std::string   threshold_text   = "-1.5500";
     std::string   interpretation   = "Waiting for model.";
     std::string   token_count      = "-";
+    std::string   progress         = "-";
     std::string   elapsed          = "-";
     std::string   speed            = "-";
     std::string   profile_summary  = "Detecting hardware...";
@@ -55,7 +55,6 @@ struct BackendSnapshot {
 };
 
 std::string format_fixed(double value, int precision);
-std::string score_direction(double score);
 std::string interpret_score(double score, const std::string & warning = "");
 std::string interpret_result(const AnalysisResult & result);
 
@@ -109,6 +108,7 @@ class BackendSession {
                                         const std::string &   source_label,
                                         const std::string &   operation_status);
     void        apply_analysis_result_locked(const AnalysisResult & result, const std::string & source_label);
+    void        apply_analysis_progress(const AnalysisProgress & progress);
     void        reset_analysis_fields_locked();
 
     AppConfig config_;

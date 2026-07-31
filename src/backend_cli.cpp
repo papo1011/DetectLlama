@@ -82,31 +82,22 @@ void print_json_result(const BackendSnapshot & snapshot, const DetectionInput & 
     std::cout << "    \"source\": \"" << json_escape(input.source_label) << "\"\n";
     std::cout << "  },\n";
     std::cout << "  \"model\": {\n";
-    std::cout << "    \"path\": \"" << json_escape(snapshot.loaded_model_path) << "\",\n";
     std::cout << "    \"label\": \"" << json_escape(snapshot.loaded_model_quant) << "\"\n";
     std::cout << "  },\n";
-    std::cout << "  \"score\": " << result.discrepancy << ",\n";
-    std::cout << "  \"score_direction\": \""
-              << json_escape(result.ok ? score_direction(result.discrepancy) : "unavailable") << "\",\n";
-    std::cout << "  \"calibrated\": " << result.calibrated << ",\n";
-    if (result.calibrated) {
+    if (result.ok) {
+        std::cout << "  \"score\": " << result.discrepancy << ",\n";
         std::cout << "  \"threshold\": " << result.threshold << ",\n";
         std::cout << "  \"classification\": \"" << (result.predicted_ai ? "AI-like" : "human-like") << "\",\n";
-        std::cout << "  \"calibration_id\": \"" << json_escape(result.calibration_id) << "\",\n";
     } else {
+        std::cout << "  \"score\": null,\n";
         std::cout << "  \"threshold\": null,\n";
         std::cout << "  \"classification\": null,\n";
-        std::cout << "  \"calibration_id\": null,\n";
     }
-    std::cout << "  \"ai_probability\": null,\n";
     std::cout << "  \"interpretation\": \""
               << json_escape(result.ok ? interpret_result(result) : snapshot.interpretation)
               << "\",\n";
     std::cout << "  \"tokens\": " << result.tokens << ",\n";
-    std::cout << "  \"context_length\": " << result.context_length << ",\n";
-    std::cout << "  \"windows\": " << result.windows << ",\n";
-    std::cout << "  \"context_overlap\": " << result.context_overlap << ",\n";
-    std::cout << "  \"warning\": \"" << json_escape(result.warning) << "\",\n";
+    std::cout << "  \"progress\": " << (result.ok ? "\"100%\"" : "null") << ",\n";
     std::cout << "  \"elapsed_seconds\": " << result.elapsed_seconds << ",\n";
     std::cout << "  \"tokens_per_second\": " << result.tokens_per_second << ",\n";
     std::cout << "  \"error\": \"" << json_escape(result.error) << "\"\n";
@@ -119,26 +110,16 @@ void print_human_result(const BackendSnapshot & snapshot, const AnalysisResult &
         return;
     }
 
-    std::cout << "Model: " << snapshot.loaded_model_quant << " (" << snapshot.loaded_model_path << ")\n";
+    std::cout << "Input: " << snapshot.input_source << "\n";
+    std::cout << "Model: " << snapshot.loaded_model_quant << "\n";
+    std::cout << "Classification: " << (result.predicted_ai ? "AI-like" : "human-like") << "\n";
     std::cout << "Score: " << format_fixed(result.discrepancy, 4) << "\n";
-    std::cout << "Direction: " << score_direction(result.discrepancy) << "\n";
-    if (result.calibrated) {
-        std::cout << "Calibrated: yes (" << result.calibration_id << ")\n";
-        std::cout << "Threshold: " << format_fixed(result.threshold, 4) << "\n";
-        std::cout << "Classification: " << (result.predicted_ai ? "AI-like" : "human-like") << "\n";
-    } else {
-        std::cout << "Calibrated: no (classification unavailable)\n";
-    }
-    std::cout << "AI probability: unavailable\n";
+    std::cout << "Threshold: " << format_fixed(result.threshold, 4) << "\n";
     std::cout << "Interpretation: " << interpret_result(result) << "\n";
     std::cout << "Tokens: " << result.tokens << "\n";
-    std::cout << "Context: " << result.context_length << "\n";
-    std::cout << "Windows: " << result.windows << "\n";
-    if (result.context_overlap > 0) {
-        std::cout << "Context overlap: " << result.context_overlap << " tokens\n";
-    }
-    std::cout << "Elapsed: " << format_fixed(result.elapsed_seconds, 2) << " s\n";
+    std::cout << "Progress: 100%\n";
     std::cout << "Speed: " << format_fixed(result.tokens_per_second, 2) << " tokens/sec\n";
+    std::cout << "Time: " << format_fixed(result.elapsed_seconds, 2) << " s\n";
 }
 
 }  // namespace
